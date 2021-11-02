@@ -2,10 +2,20 @@
 Retrieves information about an image
 
 {{fbdoc item="syntax"}}##
-	[[KeyPgDeclare|declare]] [[KeyPgFunction|function]] **Imageinfo** ( [[KeyPgByval|byval]] //image// [[KeyPgAs|as]] [[KeyPgAny|any]] [[KeyPgPtr|ptr]], [[KeyPgByref|byref]] //width// [[KeyPgAs|as]] [[KeyPgInteger|integer]] = 0, [[KeyPgByref|byref]] //height// [[KeyPgAs|as]] [[KeyPgInteger|integer]] = 0, [[KeyPgByref|byref]] //bypp// [[KeyPgAs|as]] [[KeyPgInteger|integer]] = 0, [[KeyPgByref|byref]] //pitch// [[KeyPgAs|as]] [[KeyPgInteger|integer]] = 0, [[KeyPgByref|byref]] //pixdata// [[KeyPgAs|as]] [[KeyPgAny|any]] [[KeyPgPtr|ptr]] = 0, [[KeyPgByref|byref]] //size// [[KeyPgAs|as]] [[KeyPgInteger|integer]] = 0 ) [[KeyPgAs|as]] [[KeyPgLong|long]]
+	for fbc version < 1.08:
+		[[KeyPgDeclare|declare]] [[KeyPgFunction|function]] **Imageinfo** ( [[KeyPgByval|byval]] //image// [[KeyPgAs|as]] [[KeyPgAny|any]] [[KeyPgPtr|ptr]], [[KeyPgByref|byref]] //width// [[KeyPgAs|as]] [[KeyPgInteger|integer]] = 0, [[KeyPgByref|byref]] //height// [[KeyPgAs|as]] [[KeyPgInteger|integer]] = 0, [[KeyPgByref|byref]] //bypp// [[KeyPgAs|as]] [[KeyPgInteger|integer]] = 0, [[KeyPgByref|byref]] //pitch// [[KeyPgAs|as]] [[KeyPgInteger|integer]] = 0, [[KeyPgByref|byref]] //pixdata// [[KeyPgAs|as]] [[KeyPgAny|any]] [[KeyPgPtr|ptr]] = 0, [[KeyPgByref|byref]] //size// [[KeyPgAs|as]] [[KeyPgInteger|integer]] = 0 ) [[KeyPgAs|as]] [[KeyPgLong|long]]
+	for fbc version >= 1.08:
+		[[KeyPgDeclare|declare]] [[KeyPgFunction|function]] **Imageinfo** ( [[KeyPgByval|byval]] //image// [[KeyPgAs|as]] [[KeyPgConstQualifier|const]] [[KeyPgAny|any]] [[KeyPgPtr|ptr]], [[KeyPgByref|byref]] //width// [[KeyPgAs|as]] [[KeyPgLong|long]] = 0, [[KeyPgByref|byref]] //height// [[KeyPgAs|as]] [[KeyPgLong|long]] = 0, [[KeyPgByref|byref]] //bypp// [[KeyPgAs|as]] [[KeyPgLong|long]] = 0, [[KeyPgByref|byref]] //pitch// [[KeyPgAs|as]] [[KeyPgLong|long]] = 0, [[KeyPgByref|byref]] //pixdata// [[KeyPgAs|as]] [[KeyPgAny|any]] [[KeyPgPtr|ptr]] = 0, [[KeyPgByref|byref]] //size// [[KeyPgAs|as]] [[KeyPgLongint|longint]] = 0 ) [[KeyPgAs|as]] [[KeyPgLong|long]]
+		[[KeyPgDeclare|declare]] [[KeyPgFunction|function]] **Imageinfo** ( [[KeyPgByval|byval]] //image// [[KeyPgAs|as]] [[KeyPgConstQualifier|const]] [[KeyPgAny|any]] [[KeyPgPtr|ptr]], [[KeyPgByref|byref]] //width// [[KeyPgAs|as]] [[KeyPgLongint|longint]], [[KeyPgByref|byref]] //height// [[KeyPgAs|as]] [[KeyPgLongint|longint]], [[KeyPgByref|byref]] //bypp// [[KeyPgAs|as]] [[KeyPgLongint|longint]] = 0, [[KeyPgByref|byref]] //pitch// [[KeyPgAs|as]] [[KeyPgLongint|longint]] = 0, [[KeyPgByref|byref]] //pixdata// [[KeyPgAs|as]] [[KeyPgAny|any]] [[KeyPgPtr|ptr]] = 0, [[KeyPgByref|byref]] //size// [[KeyPgAs|as]] [[KeyPgLongint|longint]] = 0 ) [[KeyPgAs|as]] [[KeyPgLong|long]]
 ##
 {{fbdoc item="usage"}}##
-	//result// = **Imageinfo**( //image// [, [//width//] [, [//height//] [, [//bypp//] [, [//pitch//] [, [//pixdata//] [, //size//]]]]]] )
+	for fbc version < 1.08::
+		//result// = **Imageinfo**( //image// [, [ //width// ] [, [ //height// ] [, [ //bypp// ] [, [ //pitch// ] [, [ //pixdata// ] [, //size// ]]]]]] )
+	for fbc version >= 1.08:
+		in the LONG (or INTEGER<32>) version of the function:
+			//result// = **Imageinfo**( //image// [, [ //width// ] [, [ //height// ] [, [ //bypp// ] [, [ //pitch// ] [ , [ //pixdata// ] [, //size// ]]]]]] )
+		in the LONGINT (or INTEGER<64>) version of the function:
+			//result// = **Imageinfo**( //image// , //width// , //height// [, [ //bypp// ] [, [ //pitch// ] [ , [ //pixdata// ] [, //size// ]]]] )
 ##
 {{fbdoc item="param"}}
 	##//image//##
@@ -30,6 +40,8 @@ Retrieves information about an image
 	##**""ImageInfo""**## provides various information about an image, such as its dimensions and color depth, but also provides you with the information you need to directly access all the pixel data in the pixel buffer.
 	
 	It can also provide the size of the image in memory, which is useful for allocating memory to copy the existing image, or to write the image to a file.
+	
+	##**""ImageInfo""**## is an alternative way to access the main characteristics of an image, rather than directly accessing the internal FB.IMAGE structure (defined in ##fbgfx.bi##) through a typed pointer to member data.
 	
 	The error code returned by ##**""ImageInfo""**## can be checked using ##[[KeyPgErr|Err]]## in the next line. The function version of  ##**""ImageInfo""**## returns directly the error code as a 32 bit ##[[KeyPgLong|Long]]##.
 
@@ -104,7 +116,7 @@ sleep
 screenres 320, 200, 32
 dim image as any ptr = imagecreate( 64, 64 )
 
-dim pitch as integer
+dim pitch as long
 dim pixels as any ptr
 
 '' Get enough information to iterate through the pixel data.

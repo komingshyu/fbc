@@ -27,6 +27,7 @@
 #include once "CHttpStream.bi"
 #include once "curl.bi"
 #include once "crt/string.bi"
+#include once "fbdoc_trace.bi"
 
 namespace fb
 
@@ -147,14 +148,16 @@ namespace fb
  			curl_easy_reset( curl )
  		end if
 
-		'' !!! TODO add verbose option for user
-		''curl_easy_setopt( curl, CURLOPT_VERBOSE, TRUE )
+		if( fbdoc.get_trace() ) then
+			curl_easy_setopt( curl, CURLOPT_VERBOSE, TRUE )
+		end if
 
 		curl_easy_setopt( curl, CURLOPT_URL, url )
 
-		'' Follow at most one redirection to allow for url rewrite on server side
-		curl_easy_setopt( curl, CURLOPT_FOLLOWLOCATION, 1 )
-		curl_easy_setopt( curl, CURLOPT_MAXREDIRS, 1 )
+		'' Follow at most two redirection to allow for url rewrite
+		'' and page redirect on service side
+		curl_easy_setopt( curl, CURLOPT_FOLLOWLOCATION, 2 )
+		curl_easy_setopt( curl, CURLOPT_MAXREDIRS, 2 )
 
 		curl_easy_setopt( curl, CURLOPT_WRITEFUNCTION, @recv_cb )
 		curl_easy_setopt( curl, CURLOPT_WRITEDATA, @ctx->stream )

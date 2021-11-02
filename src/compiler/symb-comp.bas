@@ -9,10 +9,10 @@
 declare function symbGetCompCopyCtor( byval sym as FBSYMBOL ptr ) as FBSYMBOL ptr
 
 type FB_SYMBNEST
-	sym				as FBSYMBOL ptr
-	symtb			as FBSYMBOLTB ptr			'' prev symbol tb
-	hashtb			as FBHASHTB ptr				'' prev hash tb
-	ns				as FBSYMBOL ptr				'' prev namespace
+	sym             as FBSYMBOL ptr
+	symtb           as FBSYMBOLTB ptr           '' prev symbol tb
+	hashtb          as FBHASHTB ptr             '' prev hash tb
+	ns              as FBSYMBOL ptr             '' prev namespace
 end type
 
 sub symbCompInit( )
@@ -109,7 +109,7 @@ private sub hBuildRtti( byval udt as FBSYMBOL ptr )
 	'' (real identifier given later during mangling)
 	symbNestBegin( udt, TRUE )
 	rtti = symbAddVar( NULL, NULL, FB_DATATYPE_STRUCT, symb.rtti.fb_rtti, 0, 0, dTB(), _
-	                   FB_SYMBATTRIB_CONST or FB_SYMBATTRIB_STATIC or FB_SYMBATTRIB_SHARED, _
+	                   FB_SYMBATTRIB_CONST or FB_SYMBATTRIB_STATIC or FB_SYMBATTRIB_SHARED or FB_SYMBATTRIB_INTERNAL, _
 	                   FB_SYMBOPT_PRESERVECASE )
 	rtti->stats or= FB_SYMBSTATS_RTTITABLE
 	symbNestEnd( TRUE )
@@ -161,7 +161,7 @@ private sub hBuildVtable( byval udt as FBSYMBOL ptr )
 	symbNestBegin( udt, TRUE )
 	dTB(0).upper = udt->udt.ext->vtableelements - 1
 	vtable = symbAddVar( NULL, NULL, typeAddrOf( FB_DATATYPE_VOID ), NULL, 0, 1, dTB(), _
-	                     FB_SYMBATTRIB_CONST or FB_SYMBATTRIB_STATIC or FB_SYMBATTRIB_SHARED, _
+	                     FB_SYMBATTRIB_CONST or FB_SYMBATTRIB_STATIC or FB_SYMBATTRIB_SHARED or FB_SYMBATTRIB_INTERNAL, _
 	                     FB_SYMBOPT_PRESERVECASE )
 	vtable->stats or= FB_SYMBSTATS_VTABLE
 	symbNestEnd( TRUE )
@@ -379,9 +379,9 @@ private sub hAssignList _
 	subtype = symbGetSubtype( fld )
 
 	cnt = symbAddTempVar( FB_DATATYPE_INTEGER )
-    label = symbAddLabel( NULL )
-    dst = symbAddTempVar( typeAddrOf( symbGetType( fld ) ), subtype )
-    src = symbAddTempVar( typeAddrOf( symbGetType( fld ) ), subtype )
+	label = symbAddLabel( NULL )
+	dst = symbAddTempVar( typeAddrOf( symbGetType( fld ) ), subtype )
+	src = symbAddTempVar( typeAddrOf( symbGetType( fld ) ), subtype )
 
 	'' dst = @this.arrayfield(0)
 	astAdd( astBuildVarAssign( dst, astNewADDROF( astBuildVarField( this_, fld ) ), AST_OPOPT_ISINI ) )
@@ -391,13 +391,13 @@ private sub hAssignList _
 	'' for cnt = 0 to symbGetArrayElements( dst )-1
 	astAdd( astBuildForBegin( NULL, cnt, label, 0 ) )
 
-    '' *dst = *src
-    astAdd( astNewASSIGN( astBuildVarDeref( dst ), astBuildVarDeref( src ) ) )
+	'' *dst = *src
+	astAdd( astNewASSIGN( astBuildVarDeref( dst ), astBuildVarDeref( src ) ) )
 
 	'' dst += 1
-    astAdd( astBuildVarInc( dst, 1 ) )
+	astAdd( astBuildVarInc( dst, 1 ) )
 	'' src += 1
-    astAdd( astBuildVarInc( src, 1 ) )
+	astAdd( astBuildVarInc( src, 1 ) )
 
 	'' next
 	astAdd( astBuildForEnd( NULL, cnt, label, astNewCONSTi( symbGetArrayElements( fld ) ) ) )
@@ -430,7 +430,7 @@ private function hCopyUnionFields _
 		fld = fld->next
 	loop while( fld andalso symbIsField( fld ) andalso symbGetIsUnionField( fld ) )
 
-    '' copy all them at once
+	'' copy all them at once
 	astAdd( astNewMEM( AST_OP_MEMMOVE, _
 				astBuildVarField( this_, base_fld ), _
 				astBuildVarField( rhs, base_fld ), _
@@ -559,7 +559,8 @@ sub symbUdtDeclareDefaultMembers _
 	default.copyctor = NULL
 	default.copyctorconst = NULL
 	default.copyletopconst = NULL
-	default.dtor = NULL
+	default.dtor1 = NULL
+	default.dtor0 = NULL
 
 	'' Ctor/inited fields and no ctor yet?
 	if( (symbGetUDTHasCtorField( udt ) or symbGetUDTHasInitedField( udt )) and _
@@ -572,7 +573,7 @@ sub symbUdtDeclareDefaultMembers _
 			errReport( FB_ERRMSG_NEEDEXPLICITDEFCTOR )
 		else
 			'' Add default ctor
-			default.defctor = hDeclareProc( udt, INVALID, FB_DATATYPE_INVALID, FB_SYMBATTRIB_NONE, FB_PROCATTRIB_OVERLOADED or FB_PROCATTRIB_CONSTRUCTOR )
+			default.defctor = hDeclareProc( udt, INVALID, FB_DATATYPE_INVALID, FB_SYMBATTRIB_INTERNAL, FB_PROCATTRIB_OVERLOADED or FB_PROCATTRIB_CONSTRUCTOR )
 		end if
 	end if
 
@@ -584,7 +585,7 @@ sub symbUdtDeclareDefaultMembers _
 
 		if( udt->udt.ext->copyletopconst = NULL ) then
 			'' declare operator let( byref rhs as const UDT )
-			default.copyletopconst = hDeclareProc( udt, AST_OP_ASSIGN, typeSetIsConst( FB_DATATYPE_STRUCT ), FB_SYMBATTRIB_NONE, FB_PROCATTRIB_OVERLOADED or FB_PROCATTRIB_OPERATOR )
+			default.copyletopconst = hDeclareProc( udt, AST_OP_ASSIGN, typeSetIsConst( FB_DATATYPE_STRUCT ), FB_SYMBATTRIB_INTERNAL, FB_PROCATTRIB_OVERLOADED or FB_PROCATTRIB_OPERATOR )
 			symbProcCheckOverridden( default.copyletopconst, TRUE )
 		end if
 
@@ -595,7 +596,7 @@ sub symbUdtDeclareDefaultMembers _
 				'' same as with default ctor above.
 				errReport( FB_ERRMSG_NEEDEXPLICITCOPYCTORCONST )
 			else
-				default.copyctorconst = hDeclareProc( udt, INVALID, typeSetIsConst( FB_DATATYPE_STRUCT ), FB_SYMBATTRIB_NONE, FB_PROCATTRIB_OVERLOADED or FB_PROCATTRIB_CONSTRUCTOR )
+				default.copyctorconst = hDeclareProc( udt, INVALID, typeSetIsConst( FB_DATATYPE_STRUCT ), FB_SYMBATTRIB_INTERNAL, FB_PROCATTRIB_OVERLOADED or FB_PROCATTRIB_CONSTRUCTOR )
 			end if
 		end if
 
@@ -608,7 +609,7 @@ sub symbUdtDeclareDefaultMembers _
 				'' same as with default ctor above.
 				errReport( FB_ERRMSG_NEEDEXPLICITCOPYCTOR )
 			else
-				default.copyctor = hDeclareProc( udt, INVALID, FB_DATATYPE_STRUCT, FB_SYMBATTRIB_NONE, FB_PROCATTRIB_OVERLOADED or FB_PROCATTRIB_CONSTRUCTOR )
+				default.copyctor = hDeclareProc( udt, INVALID, FB_DATATYPE_STRUCT, FB_SYMBATTRIB_INTERNAL, FB_PROCATTRIB_OVERLOADED or FB_PROCATTRIB_CONSTRUCTOR )
 			end if
 		end if
 	end if
@@ -618,13 +619,26 @@ sub symbUdtDeclareDefaultMembers _
 		symbUdtAllocExt( udt )
 
 		'' no default dtor explicitly defined?
-		if( udt->udt.ext->dtor = NULL ) then
-			'' Dtor
-			default.dtor = hDeclareProc( udt, INVALID, FB_DATATYPE_INVALID, FB_SYMBATTRIB_NONE, FB_PROCATTRIB_DESTRUCTOR )
+		if( udt->udt.ext->dtor1 = NULL ) then
+
+			'' if we didn't have the complete dtor then we shouln't have the deleting dtor either
+			'' because there is no way to explicitly define the deleting dtor
+			assert( udt->udt.ext->dtor0 = NULL )
+
+			'' Complete dtor
+			default.dtor1 = hDeclareProc( udt, INVALID, FB_DATATYPE_INVALID, FB_SYMBATTRIB_INTERNAL, FB_PROCATTRIB_DESTRUCTOR1 )
+
+			'' c++? we may need other dtors too...
+			if( symbGetMangling( udt ) = FB_MANGLING_CPP ) then
+				'' Deleting dtor
+				default.dtor0 = hDeclareProc( udt, INVALID, FB_DATATYPE_INVALID, FB_SYMBATTRIB_INTERNAL, FB_PROCATTRIB_DESTRUCTOR0 )
+			end if
 
 			'' Don't allow the implicit dtor to override a FINAL dtor from the base
-			symbProcCheckOverridden( default.dtor, TRUE )
+			symbProcCheckOverridden( default.dtor1, TRUE )
+
 		end if
+
 	end if
 
 end sub
@@ -685,8 +699,12 @@ sub symbUdtImplementDefaultMembers _
 		hAddCtorBody( udt, default.copyctor, TRUE )
 	end if
 
-	if( default.dtor ) then
-		hAddCtorBody( udt, default.dtor, FALSE )
+	if( default.dtor1 ) then
+		hAddCtorBody( udt, default.dtor1, FALSE )
+	end if
+
+	if( default.dtor0 ) then
+		hAddCtorBody( udt, default.dtor0, FALSE )
 	end if
 
 end sub
@@ -733,7 +751,7 @@ end function
 function symbCompIsTrivial( byval sym as FBSYMBOL ptr ) as integer
 	assert( symbIsStruct( sym ) )
 	function = ((symbGetCompCopyCtor( sym ) = NULL) and _
-	            (symbGetCompDtor( sym ) = NULL) and _
+	            (symbGetCompDtor1( sym ) = NULL) and _
 	            (not symbGetHasRTTI( sym )))
 end function
 
@@ -783,13 +801,24 @@ sub symbCheckCompCtor( byval sym as FBSYMBOL ptr, byval proc as FBSYMBOL ptr )
 	end if
 end sub
 
-sub symbSetCompDtor( byval sym as FBSYMBOL ptr, byval proc as FBSYMBOL ptr )
+sub symbSetCompDtor1( byval sym as FBSYMBOL ptr, byval proc as FBSYMBOL ptr )
 	if( symbIsStruct( sym ) ) then
-		assert( symbIsDestructor( proc ) )
+		assert( symbIsDestructor1( proc ) )
 		symbUdtAllocExt( sym )
-		if( sym->udt.ext->dtor = NULL ) then
-			'' Add dtor
-			sym->udt.ext->dtor = proc
+		if( sym->udt.ext->dtor1 = NULL ) then
+			'' Add deleting dtor (D1)
+			sym->udt.ext->dtor1 = proc
+		end if
+	end if
+end sub
+
+sub symbSetCompDtor0( byval sym as FBSYMBOL ptr, byval proc as FBSYMBOL ptr )
+	if( symbIsStruct( sym ) ) then
+		assert( symbIsDestructor0( proc ) )
+		symbUdtAllocExt( sym )
+		if( sym->udt.ext->dtor0 = NULL ) then
+			'' Add complete dtor (D0)
+			sym->udt.ext->dtor0 = proc
 		end if
 	end if
 end sub
@@ -821,11 +850,21 @@ private function symbGetCompCopyCtor( byval sym as FBSYMBOL ptr ) as FBSYMBOL pt
 	end if
 end function
 
-function symbGetCompDtor( byval sym as FBSYMBOL ptr ) as FBSYMBOL ptr
+function symbGetCompDtor1( byval sym as FBSYMBOL ptr ) as FBSYMBOL ptr
 	if( sym ) then
 		if( symbIsStruct( sym ) ) then
 			if( sym->udt.ext ) then
-				function = sym->udt.ext->dtor
+				function = sym->udt.ext->dtor1
+			end if
+		end if
+	end if
+end function
+
+function symbGetCompDtor0( byval sym as FBSYMBOL ptr ) as FBSYMBOL ptr
+	if( sym ) then
+		if( symbIsStruct( sym ) ) then
+			if( sym->udt.ext ) then
+				function = sym->udt.ext->dtor0
 			end if
 		end if
 	end if
@@ -860,28 +899,28 @@ function symbGetCompOpOvlHead _
 		byval op as AST_OP _
 	) as FBSYMBOL ptr
 
-   	'' self?
-   	if( astGetOpIsSelf( op ) ) then
-   		select case symbGetClass( sym )
-   		case FB_SYMBCLASS_STRUCT
-   			if( sym->udt.ext = NULL ) then
-   				return NULL
-   			end if
+	'' self?
+	if( astGetOpIsSelf( op ) ) then
+		select case symbGetClass( sym )
+		case FB_SYMBCLASS_STRUCT
+			if( sym->udt.ext = NULL ) then
+				return NULL
+			end if
 
-   			function = symbGetUDTOpOvlTb(sym)(op - AST_OP_SELFBASE)
+			function = symbGetUDTOpOvlTb(sym)(op - AST_OP_SELFBASE)
 
-   		case FB_SYMBCLASS_ENUM
-   			function = NULL
+		case FB_SYMBCLASS_ENUM
+			function = NULL
 
-   		case FB_SYMBCLASS_CLASS
-   			'' ...
+		case FB_SYMBCLASS_CLASS
+			'' ...
 
-   		end select
+		end select
 
-   	'' not self..
-   	else
-   		function = symb.globOpOvlTb(op).head
-   	end if
+	'' not self..
+	else
+		function = symb.globOpOvlTb(op).head
+	end if
 
 end function
 
@@ -937,19 +976,19 @@ end function
 ''::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 /'private sub hDumpHashTb
-    dim as FBHASHTB ptr hashtb = symb.hashlist.tail
-    do
-        dim as zstring ptr id = symbGetName( hashtb->owner )
-        hashtb = hashtb->prev
+	dim as FBHASHTB ptr hashtb = symb.hashlist.tail
+	do
+		dim as zstring ptr id = symbGetName( hashtb->owner )
+		hashtb = hashtb->prev
 
-        print *iif( id, id, @"main" );
-        if( hashtb = NULL ) then
-        	exit do
-        end if
-    	print ,
-    loop
+		print *iif( id, id, @"main" );
+		if( hashtb = NULL ) then
+			exit do
+		end if
+		print ,
+	loop
 
-    print
+	print
 end sub'/
 
 '':::::
@@ -1008,7 +1047,7 @@ private sub hRemoveNested _
 		if( symbGetCompExt( ns )->cnt <> 0 ) then
 			'' add to import hash tb list
 			symbHashListInsertNamespace( ns, _
-										 symbGetCompSymbTb( ns ).head )
+				symbGetCompSymbTb( ns ).head )
 		end if
 
 		ns = symbGetNamespace( ns )
@@ -1033,11 +1072,11 @@ private sub hInsertImported _
 		if( ns <> NULL ) then
 			symbGetCompExt( ns )->cnt += 1
 			if( symbGetCompExt( ns )->cnt = 1 ) then
-	  			'' add to import hash tb list
-	  			symbHashListInsertNamespace( ns, _
-	  										 symbGetCompSymbTb( ns ).head )
-	  		end if
-	  	end if
+				'' add to import hash tb list
+				symbHashListInsertNamespace( ns, _
+					symbGetCompSymbTb( ns ).head )
+			end if
+		end if
 
 		imp_ = symbGetImportNext( imp_ )
 	loop
@@ -1058,13 +1097,13 @@ private sub hRemoveImported _
 	do while( imp_ <> NULL )
 		dim as FBSYMBOL ptr ns = symbGetImportNamespc( imp_ )
 
-        if( ns <> NULL ) then
-        	symbGetCompExt( ns )->cnt -= 1
+		if( ns <> NULL ) then
+			symbGetCompExt( ns )->cnt -= 1
 			if( symbGetCompExt( ns )->cnt = 0 ) then
-	    		'' remove from import hash tb list
-	    		symbHashListRemoveNamespace( ns )
-	    	end if
-	    end if
+				'' remove from import hash tb list
+				symbHashListRemoveNamespace( ns )
+			end if
+		end if
 
 		imp_ = symbGetImportNext( imp_ )
 	loop
@@ -1092,8 +1131,8 @@ sub symbNestBegin _
 		symbtb = @symbGetProcSymbTb( sym )
 		hashtb = NULL
 	else
-        symbtb = @symbGetCompSymbTb( sym )
-        hashtb = @symbGetCompHashTb( sym )
+		symbtb = @symbGetCompSymbTb( sym )
+		hashtb = @symbGetCompHashTb( sym )
 	end if
 
 	symbSetCurrentSymTb( symbtb )
@@ -1144,7 +1183,7 @@ sub symbNestEnd _
 	if( symbGetClass( sym ) = FB_SYMBCLASS_PROC ) then
 		hashtb = NULL
 	else
-        hashtb = @symbGetCompHashTb( sym )
+		hashtb = @symbGetCompHashTb( sym )
 	end if
 
 	symbSetCurrentSymTb( n->symtb )
@@ -1165,7 +1204,7 @@ sub symbNestEnd _
 		if( symbGetCompExt( sym )->cnt <> 0 ) then
 			'' add to import hash tb list
 			symbHashListInsertNamespace( sym, _
-										 symbGetCompSymbTb( sym ).head )
+				symbGetCompSymbTb( sym ).head )
 		end if
 
 		symbSetCurrentHashTb( n->hashtb )
@@ -1173,7 +1212,7 @@ sub symbNestEnd _
 		symbSetCurrentNamespc( n->ns )
 	end if
 
-    stackPop( @symb.neststk )
+	stackPop( @symb.neststk )
 
 end sub
 
@@ -1291,15 +1330,15 @@ sub symbCompDelImportList _
 	dim as FBSYMBOL ptr exp_ = symbGetCompExportHead( sym )
 	do while( exp_ <> NULL )
 
-	    symbCompDelFromImportList( exp_ )
+		symbCompDelFromImportList( exp_ )
 
-	    dim as FBSYMBOL ptr nxt = symbGetExportNext( exp_ )
-	    symbCompDelFromExportList( exp_ )
+		dim as FBSYMBOL ptr nxt = symbGetExportNext( exp_ )
+		symbCompDelFromExportList( exp_ )
 
-	    '' not a type, that's to tell NamespaceRemove() to not remove the same ns again
-	    symbGetImportNamespc( exp_ ) = NULL
+		'' not a type, that's to tell NamespaceRemove() to not remove the same ns again
+		symbGetImportNamespc( exp_ ) = NULL
 
-	    exp_ = nxt
+		exp_ = nxt
 	loop
 
 end sub
@@ -1322,7 +1361,7 @@ sub symbCompRTTIInit( )
 	'' stdlibvtable as any ptr
 	symbAddField( rttitype, "stdlibvtable", 0, dTB(), typeAddrOf( FB_DATATYPE_VOID ), NULL, 0, 0, 0 )
 
-	'' dim id as zstring ptr 
+	'' dim id as zstring ptr
 	symbAddField( rttitype, "id", 0, dTB(), typeAddrOf( FB_DATATYPE_CHAR ), NULL, 0, 0, 0 )
 
 	'' dim rttibase as fb_RTTI$ ptr

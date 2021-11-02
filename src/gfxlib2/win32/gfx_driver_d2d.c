@@ -407,7 +407,7 @@ static int GdiInteropSetup(D2DGlobalState* pGlobalState, HWND hwnd)
 		HMODULE hUser32 = GetModuleHandle("user32.dll");
 		struct LayeredWindowRenderParams* pLayeredParams = &pGlobalState->RenderParams.Layered;
 
-		pfnD3D10CreateDevice1 CreateD3D10Device = (pfnD3D10CreateDevice1)GetProcAddress(hD3D, "D3D10CreateDevice1");
+		pfnD3D10CreateDevice1 CreateD3D10Device = (pfnD3D10CreateDevice1)(void*)GetProcAddress(hD3D, "D3D10CreateDevice1");
 		if(CreateD3D10Device == NULL) {
 			goto errorReturn;
 		}
@@ -440,11 +440,13 @@ static int GdiInteropSetup(D2DGlobalState* pGlobalState, HWND hwnd)
 		pD3DTexture = NULL;
 		renderProps.pixelFormat.alphaMode = D2D1_ALPHA_MODE_IGNORE;
 		renderProps.usage = D2D1_RENDER_TARGET_USAGE_GDI_COMPATIBLE;
+		renderProps.dpiX = renderProps.dpiY = 96.f;
 		if(NOTIFY_FAILED_HR(ID2D1Factory_CreateDxgiSurfaceRenderTarget(pGlobalState->pD2DFactory, pDXGISurface, &renderProps, &pRenderTarget))) {
 			goto errorReturn;
 		}
 		bitmapProps.pixelFormat.format = texDesc.Format;
 		bitmapProps.pixelFormat.alphaMode = renderProps.pixelFormat.alphaMode;
+		bitmapProps.dpiX = bitmapProps.dpiY = 96.f;
 		if(NOTIFY_FAILED_HR(ID2D1RenderTarget_CreateBitmap(pRenderTarget, bitmapSize, NULL, stride, &bitmapProps, &pBitmap))) {
 			goto errorReturn;
 		}
@@ -458,7 +460,7 @@ static int GdiInteropSetup(D2DGlobalState* pGlobalState, HWND hwnd)
 				goto errorReturn;
 			}
 		}
-		if(!(pLayeredParams->updateLayeredWindow = (pfnUpdateLayeredWindow)GetProcAddress(hUser32, "UpdateLayeredWindow")))
+		if(!(pLayeredParams->updateLayeredWindow = (pfnUpdateLayeredWindow)(void*)GetProcAddress(hUser32, "UpdateLayeredWindow")))
 		{
 			goto errorReturn;
 		}
@@ -513,6 +515,7 @@ static int D2DDirectSetup(D2DGlobalState* pGlobalState, HWND hwnd)
 	renderProps.type = D2D1_RENDER_TARGET_TYPE_DEFAULT;
 	renderProps.usage = D2D1_RENDER_TARGET_USAGE_NONE;
 	renderProps.pixelFormat.alphaMode = D2D1_ALPHA_MODE_IGNORE;
+	renderProps.dpiX = renderProps.dpiY = 96.f;
 	while(*pFormats != DXGI_FORMAT_UNKNOWN) {
 		renderProps.pixelFormat.format = *(pFormats++);
 		if(!NOTIFY_FAILED_HR(ID2D1Factory_CreateHwndRenderTarget(
@@ -528,6 +531,7 @@ static int D2DDirectSetup(D2DGlobalState* pGlobalState, HWND hwnd)
 		goto errorReturn;
 	}
 	bitmapProps.pixelFormat = renderProps.pixelFormat;
+	bitmapProps.dpiX = bitmapProps.dpiY = 96.f;
 	if(NOTIFY_FAILED_HR(ID2D1HwndRenderTarget_CreateBitmap(
 		pHwndRenderTarget, 
 		hwndRenderProps.pixelSize, 
@@ -617,7 +621,7 @@ static void D2DCommonPaintInternal(D2DGlobalState* pGlobalState)
 	pLastDirtyRow = pDirtyEnd + ((bitPos >> 3) & (ptrSize - 1));
 fillInDirtyRect:
 	dirtyRect.left = 0;
-	dirtyRect.right = winWidth - 1;
+	dirtyRect.right = winWidth;
 	dirtyRect.top = (pFirstDirtyRow - pDirtyStart) * scanlineSize;
 	dirtyRect.bottom = ((pLastDirtyRow - pDirtyStart) + 1) * scanlineSize;
 	drawRect.left = dirtyRect.left;
@@ -675,7 +679,7 @@ static int D2DCommonInit()
 	if(hD2D != NULL) {
 		D2D1_FACTORY_OPTIONS opts = {D2D1_FACTORY_INFO_TYPE};
 		WNDPROC wndProcCookie = NULL;
-		pfnCreateD2D1Factory D2DCreateFactory = (pfnCreateD2D1Factory)GetProcAddress(hD2D, "D2D1CreateFactory");
+		pfnCreateD2D1Factory D2DCreateFactory = (pfnCreateD2D1Factory)(void*)GetProcAddress(hD2D, "D2D1CreateFactory");
 
 		if((D2DCreateFactory == NULL) || 
 		   (NOTIFY_FAILED_HR(D2DCreateFactory(
@@ -855,7 +859,7 @@ static int* D2DFetchModes(int depth, int *size)
 	*/
 	hDxgi = LoadLibrary("dxgi.dll");
 	if (hDxgi != NULL) {
-		CreateDXGIFactory = (pfnCreateDXGIFactory)GetProcAddress(hDxgi, "CreateDXGIFactory");
+		CreateDXGIFactory = (pfnCreateDXGIFactory)(void*)GetProcAddress(hDxgi, "CreateDXGIFactory");
 		if ((CreateDXGIFactory) && (!NOTIFY_FAILED_HR(CreateDXGIFactory(&__fb_IID_IDXGIFactory, (void**)&pFactory)))) {
 			while((hardwareModes.elems == 0) && SUCCEEDED(IDXGIFactory_EnumAdapters(pFactory, adapterIter++, &pAdapter))) {
 				IDXGIOutput* pOutput = NULL;

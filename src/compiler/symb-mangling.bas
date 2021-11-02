@@ -10,19 +10,19 @@
 #include once "ir.bi"
 
 type FB_MANGLEABBR
-	idx				as integer
-	dtype			as integer
-	subtype			as FBSYMBOL ptr
+	idx             as integer
+	dtype           as integer
+	subtype         as FBSYMBOL ptr
 end type
 
 type FB_MANGLECTX
-	flist			as TFLIST					'' of FB_MANGLEABBR
-	cnt				as integer
+	flist               as TFLIST                   '' of FB_MANGLEABBR
+	cnt                 as integer
 
-	tempstr			as zstring * 6 + 10 + 1
-	uniqueidcount		as integer
-	uniquelabelcount	as integer
-	profilelabelcount	as integer
+	tempstr             as zstring * 6 + 10 + 1
+	uniqueidcount       as integer
+	uniquelabelcount    as integer
+	profilelabelcount   as integer
 end type
 
 const FB_INITMANGARGS = 96
@@ -82,7 +82,11 @@ function symbUniqueLabel( ) as zstring ptr
 		ctx.tempstr += str( ctx.uniquelabelcount )
 		ctx.uniquelabelcount += 1
 	else
-		ctx.tempstr = ".Lt_"
+		if( env.clopt.target = FB_COMPTARGET_DARWIN ) then
+			ctx.tempstr = "L_"
+		else
+			ctx.tempstr = ".L_"
+		end if
 		ctx.tempstr += *hHexUInt( ctx.uniqueidcount )
 		ctx.uniqueidcount += 1
 	end if
@@ -97,7 +101,7 @@ function symbMakeProfileLabelName( ) as zstring ptr
 end function
 
 function symbGetDBGName( byval sym as FBSYMBOL ptr ) as zstring ptr
-    '' GDB will demangle the symbols automatically
+	'' GDB will demangle the symbols automatically
 	if( hDoCppMangling( sym ) ) then
 		select case as const symbGetClass( sym )
 		'' but UDT's, they shouldn't include any mangling at all..
@@ -273,15 +277,15 @@ private function hAbbrevAdd _
 
 	dim as FB_MANGLEABBR ptr n = any
 
-    n = flistNewItem( @ctx.flist )
-    n->idx = ctx.cnt
+	n = flistNewItem( @ctx.flist )
+	n->idx = ctx.cnt
 
-    n->dtype = dtype
-    n->subtype = subtype
+	n->dtype = dtype
+	n->subtype = subtype
 
-    ctx.cnt += 1
+	ctx.cnt += 1
 
-    function = n
+	function = n
 end function
 
 private sub hAbbrevGet( byref mangled as string, byval idx as integer )
@@ -636,9 +640,23 @@ private function hDoCppMangling( byval sym as FBSYMBOL ptr ) as integer
 	end if
 
 	'' RTL or exclude parent?
-	if( ( (symbGetStats( sym ) and (FB_SYMBSTATS_RTL or FB_SYMBSTATS_EXCLPARENT)) <> 0 ) _
-		or ( symbGetMangling( sym ) = FB_MANGLING_RTLIB ) ) then
+	if( (symbGetStats( sym ) and (FB_SYMBSTATS_RTL or FB_SYMBSTATS_EXCLPARENT)) <> 0 ) then
 		return FALSE
+	end if
+
+	'' extern "rtlib"? disable cpp mangling
+	if( symbGetMangling( sym ) = FB_MANGLING_RTLIB ) then
+		'' disable cpp mangling only if it's not internally generated:
+		'' Internally generated symbols:
+		''   - vtable
+		''   - rtti
+		''   - default constructor / copy constructor
+		''   - default assignment operator
+		''   - default complete destructor / deleting constructor
+
+		if( (symbGetAttrib( sym ) and (FB_SYMBATTRIB_INTERNAL)) = 0 ) then
+			return FALSE
+		end if
 	end if
 
 	'' inside a namespace or class?
@@ -649,7 +667,7 @@ private function hDoCppMangling( byval sym as FBSYMBOL ptr ) as integer
 	if( sym->class = FB_SYMBCLASS_PROC ) then
 		'' overloaded? (this will handle operators too)
 		if( symbIsOverloaded( sym ) ) then
-    		return TRUE
+			return TRUE
 		end if
 	end if
 
@@ -705,7 +723,10 @@ private sub hMangleNamespace _
 end sub
 
 private sub hMangleVariable( byval sym as FBSYMBOL ptr )
+	'' local optimization for 'id' allocation - it's always initialized by logic below
 	static as string id
+
+	'' !!!TODO!!! should varcounter  reset between modules and on restarts with fbRestartableStaticVariable()?
 	static as integer varcounter
 	dim as string mangled
 	dim as zstring ptr p = any
@@ -1194,12 +1215,13 @@ end function
 private sub hMangleProc( byval sym as FBSYMBOL ptr )
 	dim as string mangled
 	dim as integer length = any, docpp = any, add_stdcall_suffix = any
+	dim as integer quote_mangled_name = false
 	dim as zstring ptr id = any
 
 	docpp = hDoCppMangling( sym )
 
 	'' Should the @N win32 stdcall suffix be added for this procedure?
-	'' * only for stdcall, not stdcallms/cdecl/pascal
+	'' * only for stdcall, not stdcallms/cdecl/pascal/thiscall
 	''   (that also makes it win32-only)
 	'' * only on x86, since these calling conventions matter there only
 	'' * only for ASM/LLVM backends, but not for the C backend, because gcc
@@ -1212,11 +1234,33 @@ private sub hMangleProc( byval sym as FBSYMBOL ptr )
 	if( env.clopt.backend = FB_BACKEND_LLVM ) then
 		mangled += "@"
 
+		'' TODO: should be able to clean up this logic where we have a windows
+		'' target and remove the check on 'add_stdcall_suffix' here.
+		'' on win we are also quoting and escaping and should not need to quote
+		'' only or have @N suffix only on any other target.
+
 		'' Going to add @N stdcall suffix below?
+		'' In LLVM, @ is a special char, identifiers using it must be quoted
 		if( add_stdcall_suffix ) then
-			'' In LLVM, @ is a special char, identifiers using it must be quoted
 			mangled += """"
+			quote_mangled_name = true
 		end if
+
+		'' Windows target also? we provide the mangling so the name
+		'' must be both quoted and escaped so that our mangled name does not
+		'' get mangled again by llvm.  we need to do this on all names
+		'' not just the ones with @N suffix due the leading underscore handling
+		select case( env.clopt.target )
+		case FB_COMPTARGET_WIN32, FB_COMPTARGET_CYGWIN, FB_COMPTARGET_XBOX
+			if( quote_mangled_name = false ) then
+				mangled += """"
+				quote_mangled_name = true
+			end if
+
+			'' chr(1) will escape the name so it's passed through to assembler as-is
+			mangled += chr(1)
+		end select
+
 	end if
 
 	'' Win32 underscore prefix
@@ -1255,7 +1299,9 @@ private sub hMangleProc( byval sym as FBSYMBOL ptr )
 		end if
 	elseif( symbIsConstructor( sym ) ) then
 		mangled += "C1"
-	elseif( symbIsDestructor( sym ) ) then
+	elseif( symbIsDestructor0( sym ) ) then
+		mangled += "D0"
+	elseif( symbIsDestructor1( sym ) ) then
 		mangled += "D1"
 	else
 		if( symbGetMangling( sym ) = FB_MANGLING_BASIC ) then
@@ -1301,11 +1347,11 @@ private sub hMangleProc( byval sym as FBSYMBOL ptr )
 	'' @N win32 stdcall suffix
 	if( add_stdcall_suffix ) then
 		mangled += "@" + str( symbProcCalcStdcallSuffixN( sym ) )
+	end if
 
-		if( env.clopt.backend = FB_BACKEND_LLVM ) then
-			'' In LLVM, @ is a special char, identifiers using it must be quoted
-			mangled += """"
-		end if
+	'' close the quoted name if needed
+	if( quote_mangled_name ) then
+		mangled += """"
 	end if
 
 	symbSetMangledId( sym, mangled )

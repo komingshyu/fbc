@@ -1,7 +1,7 @@
 '' symbol table module for defines and macros
 ''
 '' chng: sep/2004 written [v1ctor]
-''		 jan/2005 updated to use real linked-lists [v1ctor]
+''       jan/2005 updated to use real linked-lists [v1ctor]
 
 
 #include once "fb.bi"
@@ -17,10 +17,10 @@
 #include once "string.bi"
 
 type SYMBDEF
-	name			as const zstring ptr
-	value			as zstring ptr
-	flags			as integer  '' FB_DEFINE_FLAGS_*
-	proc			as FBS_DEFINE_PROCZ
+	name            as const zstring ptr
+	value           as zstring ptr
+	flags           as integer  '' FB_DEFINE_FLAGS_*
+	proc            as FBS_DEFINE_PROCZ
 end type
 
 private function hDefFile_cb() as string static
@@ -87,6 +87,10 @@ end function
 
 private function hDefGui_cb () as string
 	function = str( env.clopt.modeview = FB_MODEVIEW_GUI )
+end function
+
+private function hDefOptimize_cb () as string
+	function = str( fbGetOption( FB_COMPOPT_OPTIMIZELEVEL ) )
 end function
 
 private function hDefOutExe_cb() as string
@@ -208,9 +212,9 @@ private function hMacro_getArgZ( byval argtb as LEXPP_ARGTB ptr, byval num as in
 		end if
 		ZstrAssignW(@res, dt)
 	end if
-	
+
 	function = res
-	
+
 end function
 
 private function hMacro_getArgW( byval argtb as LEXPP_ARGTB ptr, byval num as integer = 0 ) as wstring ptr
@@ -231,9 +235,175 @@ private function hMacro_getArgW( byval argtb as LEXPP_ARGTB ptr, byval num as in
 		end if
 		DWstrConcatAssign(res, dt)
 	end if
-	
+
 	function = res.data
-	
+
+end function
+
+private function hMacro_EvalZ( byval arg as zstring ptr ) as string
+
+	'' the expression should have already been handled in hLoadMacro|hLoadMacroW
+	'' so, if we do get here, just pass the argument back as-is
+	'' !!!TODO!!! - DZSTRING can be replaced by STRING
+	dim as DZSTRING res
+	DZStrAssign( res, NULL )
+
+	if( arg ) then
+
+		'' create a lightweight context push for the lexer
+		'' like an include file, but no named include file
+		'' - text to expand is to be loaded in LEX.CTX->DEFTEXT[W]
+		'' - use the parser to build an AST for the literal result
+
+		'' !!!FIXME!!! : check if env.includerec is too deep
+		'' if( env.includerec >= FB_MAXINCRECLEVEL ) then
+		lexPushCtx()
+		lexInit( FALSE, TRUE )
+
+		'' prevent cExpression from writing to .pp.bas file
+		lex.ctx->reclevel += 1
+
+		DZstrAssign( lex.ctx->deftext, *arg )
+		lex.ctx->defptr = lex.ctx->deftext.data
+		lex.ctx->deflen += len( *arg )
+
+		'' Add an end of expression marker so that the parser
+		'' doesn't read past the end of the expression text
+		'' by appending an LFCHAR to the end of the expression
+		'' It would be better to use the explicit EOF character,
+		'' but we can't appened an extra NUL character to a zstring
+
+		DZstrConcatAssign( lex.ctx->deftext, LFCHAR )
+		lex.ctx->defptr = lex.ctx->deftext.data
+		lex.ctx->deflen += len( LFCHAR )
+
+		dim expr as ASTNODE ptr = cExpression( )
+		var errmsg = FB_ERRMSG_OK
+
+		if( expr <> NULL ) then
+			expr = astOptimizeTree( expr )
+
+			if( astIsCONST( expr ) ) then
+				DZStrAssign( res, astConstFlushToStr( expr ) )
+
+				'' any tokens still in the buffer? cExpression() should have used them all
+				if( lexGetToken( ) <> FB_TK_EOL ) then
+					errmsg = FB_ERRMSG_SYNTAXERROR
+				end if
+			elseif( astIsConstant( expr ) ) then
+				DZStrAssign( res, symbGetConstStrAsStr( expr->sym ) )
+				'' any tokens still in the buffer? cExpression() should have used them all
+				if( lexGetToken( ) <> FB_TK_EOL ) then
+					errmsg = FB_ERRMSG_SYNTAXERROR
+				end if
+				astDelTree( expr )
+			else
+				astDelTree( expr )
+				errmsg = FB_ERRMSG_EXPECTEDCONST
+				DZStrAssign( res, !"\000" )
+			end if
+		else
+			errmsg = FB_ERRMSG_SYNTAXERROR
+		end if
+
+		lex.ctx->reclevel -= 1
+
+		lexPopCtx()
+
+		if( errmsg <> FB_ERRMSG_OK ) then
+			errReportEx( errmsg, *arg )
+			'' error recovery: skip until next line (in the buffer)
+			hSkipUntil( FB_TK_EOL, TRUE )
+		end if
+
+	end if
+
+	function = *res.data
+
+end function
+
+private function hMacro_EvalW( byval arg as wstring ptr ) as wstring ptr
+
+	'' the expression should have already been handled in hLoadMacro|hLoadMacroW
+	'' so, if we do get here, just pass the argument back as-is
+	'' !!!TODO!!! - We must use DWSTRING since we don't have a built-in var-len wstring
+	'' but, if we did have a var-len wstring, we should use it instead
+
+	static as DWSTRING res
+	DWStrAssign( res, NULL )
+
+	if( arg ) then
+
+		'' create a lightweight context push for the lexer
+		'' like an include file, but no named include file
+		'' - text to expand is to be loaded in LEX.CTX->DEFTEXT[W]
+		'' - use the parser to build an AST for the literal result
+
+		'' !!!FIXME!!! : check if env.includerec is too deep
+		'' if( env.includerec >= FB_MAXINCRECLEVEL ) then
+		lexPushCtx()
+		lexInit( FALSE, TRUE )
+
+		'' prevent cExpression from writing to .pp.bas file
+		lex.ctx->reclevel += 1
+
+		DWstrAssign( lex.ctx->deftextw, *arg )
+		lex.ctx->defptrw = lex.ctx->deftextw.data
+		lex.ctx->deflen += len( *arg )
+
+		'' Add an end of expression marker so that the parser
+		'' doesn't read past the end of the expression text
+		'' by appending an LFCHAR to the end of the expression
+		'' It would be better to use the explicit EOF character,
+		'' but we can't appened an extra NUL character to a zstring
+
+		DWstrConcatAssign( lex.ctx->deftextw, LFCHAR )
+		lex.ctx->defptrw = lex.ctx->deftextw.data
+		lex.ctx->deflen += len( LFCHAR )
+
+		dim expr as ASTNODE ptr = cExpression( )
+		var errmsg = FB_ERRMSG_OK
+
+		if( expr <> NULL ) then
+			expr = astOptimizeTree( expr )
+
+			if( astIsCONST( expr ) ) then
+				DWStrAssign( res, astConstFlushToWstr( expr ) )
+
+				'' any tokens still in the buffer? cExpression() should have used them all
+				if( lexGetToken( ) <> FB_TK_EOL ) then
+					errmsg = FB_ERRMSG_SYNTAXERROR
+				end if
+			elseif( astIsConstant( expr ) ) then
+				DWStrAssign( res, symbGetConstStrAsWstr( expr->sym ) )
+				'' any tokens still in the buffer? cExpression() should have used them all
+				if( lexGetToken( ) <> FB_TK_EOL ) then
+					errmsg = FB_ERRMSG_SYNTAXERROR
+				end if
+				astDelTree( expr )
+			else
+				astDelTree( expr )
+				errmsg = FB_ERRMSG_EXPECTEDCONST
+				DWStrAssign( res, !"\u0000" )
+			end if
+		else
+			errmsg = FB_ERRMSG_SYNTAXERROR
+		end if
+
+		lex.ctx->reclevel -= 1
+
+		lexPopCtx()
+
+		if( errmsg <> FB_ERRMSG_OK ) then
+			errReportEx( errmsg, *arg )
+			'' error recovery: skip until next line (in the buffer)
+			hSkipUntil( FB_TK_EOL, TRUE )
+		end if
+
+	end if
+
+	function = res.data
+
 end function
 
 private function hDefUniqueIdPush_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as string
@@ -250,9 +420,9 @@ private function hDefUniqueIdPush_cb( byval argtb as LEXPP_ARGTB ptr, byval errn
 		*errnum = FB_ERRMSG_ARGCNTMISMATCH
 		return ""
 	end if
-	
+
 	var stk = cast(SYMB_DEF_UniqueId_Stack ptr, hashLookup(@symb.def.uniqueid.dict, id))
-	
+
 	if( stk = NULL ) then
 		stk = callocate(len(SYMB_DEF_UniqueId_Stack))
 		hashAdd(@symb.def.uniqueid.dict, id, stk, cuint( INVALID ))
@@ -261,14 +431,14 @@ private function hDefUniqueIdPush_cb( byval argtb as LEXPP_ARGTB ptr, byval errn
 	end if
 
 	var elm = cast(SYMB_DEF_UniqueId_Elm ptr, allocate(len(SYMB_DEF_UniqueId_Elm)))
-	
+
 	var uid = symbUniqueId(true)
 	elm->name = allocate(len(*uid)+1)
 	*elm->name = *uid
 	elm->prev = stk->top
 
 	stk->top = elm
-	
+
 	function = ""
 end function
 
@@ -286,9 +456,9 @@ private function hDefUniqueId_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum a
 		*errnum = FB_ERRMSG_ARGCNTMISMATCH
 		return ""
 	end if
-	
+
 	var stk = cast(SYMB_DEF_UniqueId_Stack ptr, hashLookup(@symb.def.uniqueid.dict, id))
-	
+
 	ZstrFree(id)
 
 	if( stk <> NULL ) then
@@ -315,11 +485,11 @@ private function hDefUniqueIdPop_cb( byval argtb as LEXPP_ARGTB ptr, byval errnu
 		*errnum = FB_ERRMSG_ARGCNTMISMATCH
 		return ""
 	end if
-	
+
 	var stk = cast(SYMB_DEF_UniqueId_Stack ptr, hashLookup(@symb.def.uniqueid.dict, id))
-	
+
 	ZstrFree(id)
-	
+
 	if( stk <> NULL ) then
 		if( stk->top <> NULL ) then
 			deallocate(stk->top->name)
@@ -330,7 +500,7 @@ private function hDefUniqueIdPop_cb( byval argtb as LEXPP_ARGTB ptr, byval errnu
 	else
 		*errnum = FB_ERRMSG_SYNTAXERROR
 	end if
-	
+
 	function = ""
 end function
 
@@ -344,21 +514,73 @@ private function hDefArgCount_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum a
 	function = str(0)
 end function
 
+private function hDefArgExtract_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as string
+
+	'' __FB_ARG_EXTRACT__(NUMARG, ARGS...)
+	'' Retuns empty string on invalid index, rather than compile error
+
+	var res = ""
+	var numStr = hMacro_getArgZ( argtb, 0 )
+
+	if( numStr <> NULL ) then
+		'' Is NUMARG a number
+		'' Val returns 0 on failure which we can't detect from a valid 0
+		'' so check and construct the number manually
+
+		dim as string varstr = hMacro_EvalZ(numStr)
+		var pnumStr = strptr(varstr)
+
+		dim numArgLen as Long = Len(*pnumStr), i as Long, index as ULong = 0
+		dim zeroVal As ULong = Asc("0")
+		For i = 0 To numArgLen - 1
+			if( Not hIsCharNumeric(pnumStr[i]) ) then
+				Exit For
+			End If
+			index *= 10
+			index += (pnumStr[i] - zeroVal)
+		Next
+		If i = numArgLen Then
+			dim numVarArgs As ULong = argtb->count - 1
+			if(index < numVarArgs) then
+				var argString = hMacro_getArgZ( argtb, 1 )
+				dim varArgs() as string
+
+				if( hStr2Args( argString, varArgs() ) > 0 ) then
+					res = varArgs(index)
+				end if
+
+				ZStrFree(argString)
+			end if
+
+		else '' NUMARG isn't a number
+			*errnum = FB_ERRMSG_SYNTAXERROR
+		end if
+
+		ZStrFree(numStr)
+
+	else '' No args
+		*errnum = FB_ERRMSG_ARGCNTMISMATCH
+	end if
+	return res
+
+end function
+
 private function hDefArgLeft_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as string
 
-	'' __FB_ARG_LEFTTOF__( ARG, SEP )
+	'' __FB_ARG_LEFTTOF__( ARG, SEP [, RET = ""] )
 
 	var res = ""
 	var arg = hMacro_getArgZ( argtb, 0 )
 	var sep = hMacro_getArgZ( argtb, 1 )
+	var ret = hMacro_getArgZ( argtb, 2 )
 
 	if( (arg <> NULL) and (sep <> NULL) ) then
 		dim tokens() as string
 		var numtoks = hStr2Tok(arg, tokens())
-		
+
 		if( numtoks > 0 ) then
 			hUcase(sep, sep)
-			
+
 			for i as integer = 0 to numtoks-1
 				if( ucase(tokens(i)) = *sep ) then
 					for j as integer = 0 to i - 1
@@ -372,7 +594,7 @@ private function hDefArgLeft_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as
 			next
 
 			if( len(res) = 0 ) then
-				*errnum = FB_ERRMSG_SYNTAXERROR
+				res = *ret
 			end if
 		else
 			*errnum = FB_ERRMSG_SYNTAXERROR
@@ -381,25 +603,27 @@ private function hDefArgLeft_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as
 		*errnum = FB_ERRMSG_ARGCNTMISMATCH
 	end if
 
+	ZstrFree(ret)
 	ZstrFree(sep)
 	ZstrFree(arg)
-	
+
 	return res
-	
+
 end function
 
 private function hDefArgRight_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as string
 
-	'' __FB_ARG_RIGHTOF__( ARG, SEP )
+	'' __FB_ARG_RIGHTOF__( ARG, SEP [, RET = ""] )
 
 	var res = ""
 	var arg = hMacro_getArgZ( argtb, 0 )
 	var sep = hMacro_getArgZ( argtb, 1 )
+	var ret = hMacro_getArgZ( argtb, 2 )
 
 	if( (arg <> NULL) and (sep <> NULL) ) then
 		dim tokens() as string
 		var numtoks = hStr2Tok(arg, tokens())
-		
+
 		if( numtoks > 0 ) then
 			hUcase(sep, sep)
 
@@ -415,7 +639,7 @@ private function hDefArgRight_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum a
 				end if
 			next
 			if( len(res) = 0 ) then
-				*errnum = FB_ERRMSG_SYNTAXERROR
+				res = *ret
 			end if
 		else
 			*errnum = FB_ERRMSG_SYNTAXERROR
@@ -424,11 +648,12 @@ private function hDefArgRight_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum a
 		*errnum = FB_ERRMSG_ARGCNTMISMATCH
 	end if
 
+	ZstrFree(ret)
 	ZstrFree(sep)
 	ZstrFree(arg)
-	
+
 	function =  res
-	
+
 end function
 
 private function hDefJoinZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as string
@@ -447,9 +672,9 @@ private function hDefJoinZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as i
 
 	ZstrFree(l)
 	ZstrFree(r)
-	
+
 	function = res
-	
+
 end function
 
 private function hDefJoinW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as wstring ptr
@@ -470,7 +695,7 @@ private function hDefJoinW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as i
 	end if
 
 	function = res.data
-	
+
 end function
 
 private function hDefQuoteZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as string
@@ -479,7 +704,7 @@ private function hDefQuoteZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as 
 
 	var arg = hMacro_getArgZ( argtb, 0 )
 	var res = ""
-	
+
 	if( arg <> NULL ) then
 		'' don't escape, preserve the sequences as-is
 		res += "$" + QUOTE
@@ -531,12 +756,15 @@ private function hDefUnquoteZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum a
 	if( arg <> NULL ) then
 		var length = len(*arg)
 
+		'' !!!TODO!!! add support for !"escaped-strings"
+
 		'' $"[text]"?
 		if( (length >= 3) andalso ((arg[0] = asc( "$" )) and (arg[1] = asc(QUOTE)) and (arg[length-1] = asc(QUOTE))) ) then
 			res = hReplace( mid( *arg, 3, length-3 ), QUOTE + QUOTE, QUOTE )
 
 		'' "[text]"?
 		elseif( (length >= 2) andalso ((arg[0] = asc(QUOTE)) and (arg[length-1] = asc(QUOTE))) ) then
+			'' !!!FIXME!!! check env.opt.escapestr
 			res = hReplace( mid( *arg, 2, length-2 ), QUOTE + QUOTE, QUOTE )
 
 		'' anything else, return as-is
@@ -564,12 +792,15 @@ private function hDefUnquoteW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum a
 	if( arg <> NULL ) then
 		var length = len(*arg)
 
+		'' !!!TODO!!! add support for !"escaped-strings"
+
 		'' $"[text]"?
 		if( (length >= 3) andalso ((arg[0] = asc( "$" )) and (arg[1] = asc(QUOTE)) and (arg[length-1] = asc(QUOTE))) ) then
 			DWstrAssign( res, hReplaceW( mid( *arg, 3, length-3 ), QUOTE + QUOTE, QUOTE ) )
 
 		'' "[text]"?
 		elseif( (length >= 2) andalso ((arg[0] = asc(QUOTE)) and (arg[length-1] = asc(QUOTE))) ) then
+			'' !!!FIXME!!! check env.opt.escapestr
 			DWstrAssign( res, hReplaceW( mid( *arg, 2, length-2 ), QUOTE + QUOTE, QUOTE ) )
 
 		'' anything else, return as-is
@@ -583,7 +814,7 @@ private function hDefUnquoteW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum a
 
 end function
 
-private function hDefEval_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as string
+private function hDefEvalZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as string
 
 	'' __FB_EVAL__( arg )
 
@@ -591,56 +822,26 @@ private function hDefEval_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as in
 	'' so, if we do get here, just pass the argument back as-is
 
 	var arg = hMacro_getArgZ( argtb, 0 )
-	var res = ""
-
-	if( arg ) then
-
-		'' create a lightweight context push for the lexer
-		'' like an include file, but no include file
-		'' text to expand is to be loaded in LEX.CTX->DEFTEXT[W]
-		'' use the parser to build an AST for the literal result
-
-		lexPushCtx()
-		lexInit( FALSE, TRUE )
-
-		'' prevent cExpression from writing to .pp.bas file
-		lex.ctx->reclevel += 1
-
-		DZstrAssign( lex.ctx->deftext, *arg )
-		lex.ctx->defptr = lex.ctx->deftext.data
-		lex.ctx->deflen += len( *arg )
-
-		dim expr as ASTNODE ptr = cExpression( )
-
-		if( expr <> NULL ) then
-			expr = astOptimizeTree( expr )
-
-			if( astIsCONST( expr ) ) then
-				res = astConstFlushToStr( expr )
-			elseif( astIsConstant( expr ) ) then
-				res = """" + hReplace( expr->sym->var_.littext, QUOTE, QUOTE + QUOTE ) + """"
-			else
-				astDelTree( expr )
-				errReport( FB_ERRMSG_EXPECTEDCONST )
-				'' error recovery: skip until next line
-				hSkipUntil( FB_TK_EOL, TRUE )
-				res = str(0)
-			end if
-		else
-			errReport( FB_ERRMSG_SYNTAXERROR )
-			'' error recovery: skip until next line
-			hSkipUntil( FB_TK_EOL, TRUE )
-		end if
-
-		lex.ctx->reclevel -= 1
-
-		lexPopCtx()
-
-	end if
+	var res = hMacro_EvalZ( arg )
 
 	ZstrFree(arg)
 
 	function = res
+
+end function
+
+private function hDefEvalW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as wstring ptr
+
+	'' __FB_EVAL__( arg )
+
+	'' the expression should have already been handled in hLoadMacro|hLoadMacroW
+	'' so, if we do get here, just pass the argument back as-is
+
+	var arg = hMacro_getArgW( argtb, 0 )
+	static as DWSTRING res
+	DWstrAssign( res, hMacro_EvalW( arg ) )
+
+	function = res.data
 
 end function
 
@@ -683,7 +884,9 @@ dim shared defTb(0 to ...) as SYMBDEF => _
 	(@"__FB_BACKEND__"        , NULL          , FB_DEFINE_FLAGS_STR, @hDefBackend_cb    ), _
 	(@"__FB_FPU__"            , NULL          , FB_DEFINE_FLAGS_STR, @hDefFpu_cb        ), _
 	(@"__FB_FPMODE__"         , NULL          , FB_DEFINE_FLAGS_STR, @hDefFpmode_cb     ), _
-	(@"__FB_GCC__"            , NULL          , 0                  , @hDefGcc_cb        ) _
+	(@"__FB_GCC__"            , NULL          , 0                  , @hDefGcc_cb        ), _
+	(@"__FB_GUI__"            , NULL          , 0                  , @hDefGui_cb        ), _
+	(@"__FB_OPTIMIZE__"       , NULL          , 0                  , @hDefoptimize_cb   )  _
 }
 
 type SYMBMACRO
@@ -702,12 +905,13 @@ dim shared macroTb(0 to ...) as SYMBMACRO => _
 	(@"__FB_UNIQUEID__"       , 0                       , @hDefUniqueId_cb    , NULL                 , 1, { (@"ID") } ), _
 	(@"__FB_UNIQUEID_POP__"   , 0                       , @hDefUniqueIdPop_cb , NULL                 , 1, { (@"ID") } ), _
 	(@"__FB_ARG_COUNT__"      , FB_DEFINE_FLAGS_VARIADIC, @hDefArgCount_cb    , NULL                 , 1, { (@"ARGS") } ), _
-	(@"__FB_ARG_LEFTOF__"     , 0                       , @hDefArgLeft_cb     , NULL                 , 2, { (@"ARG"), (@"SEP") } ), _
-	(@"__FB_ARG_RIGHTOF__"    , 0                       , @hDefArgRight_cb    , NULL                 , 2, { (@"ARG"), (@"SEP") } ), _
+	(@"__FB_ARG_EXTRACT__"    , FB_DEFINE_FLAGS_VARIADIC, @hDefArgExtract_cb  , NULL                 , 2, { (@"ARGNUM"), (@"ARGS") } ), _
+	(@"__FB_ARG_LEFTOF__"     , FB_DEFINE_FLAGS_VARIADIC, @hDefArgLeft_cb     , NULL                 , 3, { (@"ARG"), (@"SEP"), (@"RET") } ), _
+	(@"__FB_ARG_RIGHTOF__"    , FB_DEFINE_FLAGS_VARIADIC, @hDefArgRight_cb    , NULL                 , 3, { (@"ARG"), (@"SEP"), (@"RET") } ), _
 	(@"__FB_JOIN__"           , 0                       , @hDefJoinZ_cb       , @hDefJoinW_cb        , 2, { (@"L"), (@"R") } ), _
 	(@"__FB_QUOTE__"          , 0                       , @hDefQuoteZ_cb      , @hDefQuoteW_cb       , 1, { (@"ARG") } ), _
 	(@"__FB_UNQUOTE__"        , 0                       , @hDefUnquoteZ_cb    , @hDefUnquoteW_cb     , 1, { (@"ARG") } ), _
-	(@"__FB_EVAL__"           , 0                       , @hDefEval_cb        , NULL                 , 1, { (@"ARG") } ) _
+	(@"__FB_EVAL__"           , 0                       , @hDefEvalZ_cb       , @hDefEvalW_cb        , 1, { (@"ARG") } ) _
 }
 
 sub symbDefineInit _
@@ -759,7 +963,13 @@ sub symbDefineInit _
 	case FB_CPUFAMILY_X86, FB_CPUFAMILY_X86_64
 		symbAddDefine( @"__FB_X86__", NULL, 0 )
 		symbAddDefine( @"__FB_ASM__", NULL, 0, FALSE, @hDefAsm_cb, FB_DEFINE_FLAGS_STR )
+	case FB_CPUFAMILY_PPC, FB_CPUFAMILY_PPC64, FB_CPUFAMILY_PPC64LE
+		symbAddDefine( @"__FB_PPC__", NULL, 0 )
 	end select
+
+	if( fbIsHostBigEndian( ) ) then
+		symbAddDefine( @"__FB_BIGENDIAN__", NULL, 0 )
+	end if
 
 	'' add "main" define
 	if( ismain ) then
@@ -782,21 +992,21 @@ sub symbDefineInit _
 
 	'' add the macros
 	for i as integer = 0 to ubound( macroTb )
-		
+
 		var firstparam = symbAddDefineParam( NULL, macroTb(i).params(0) )
 
 		var lastparam = firstparam
 		for j as integer = 1 to macroTb(i).nparams-1
 			lastparam = symbAddDefineParam( lastparam, macroTb(i).params(j) )
-		next	
-			
-		'' TODO: if any macros are added that don't need params, then 
+		next
+
+		'' TODO: if any macros are added that don't need params, then
 		'' flags should be stored in macroTb
 		var sym = symbAddDefineMacro( macroTb(i).name, NULL, macroTb(i).nparams, firstparam, macroTb(i).flags or FB_DEFINE_FLAGS_NEEDPARENS )
 		sym->def.mprocz = macroTb(i).procz
 		sym->def.mprocw = macroTb(i).procw
 	next
-	
+
 end sub
 
 '':::::
@@ -839,10 +1049,10 @@ function symbAddDefine _
 		exit function
 	end if
 
-	sym->def.text	= ZstrAllocate( lgt )
+	sym->def.text   = ZstrAllocate( lgt )
 	*sym->def.text = *text
 	sym->lgt = lgt
-	sym->def.params	= 0
+	sym->def.params = 0
 	sym->def.paramhead = NULL
 	sym->def.isargless = isargless
 	sym->def.dprocz = proc
@@ -966,7 +1176,7 @@ function symbAddDefineParam _
 	end if
 
 	''
-	param->name	= ZstrAllocate( len( *id ) )
+	param->name = ZstrAllocate( len( *id ) )
 	hUcase( *id, *param->name )
 
 	'' add to hash, for fast lookup
@@ -986,7 +1196,7 @@ function symbAddDefineParam _
 
 	''
 	param->num = symb.def.param
-	param->next	= NULL
+	param->next = NULL
 
 	symb.def.param += 1
 
@@ -1012,7 +1222,7 @@ function symbAddDefineTok _
 	end if
 
 	t->prev = lasttok
-	t->next	= NULL
+	t->next = NULL
 
 	''
 	t->type = dtype

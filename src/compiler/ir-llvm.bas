@@ -367,6 +367,8 @@ private function hEmitProcCallConv( byval proc as FBSYMBOL ptr ) as string
 	select case as const( symbGetProcMode( proc ) )
 	case FB_FUNCMODE_STDCALL, FB_FUNCMODE_STDCALL_MS, FB_FUNCMODE_PASCAL
 		function = "x86_stdcallcc "
+	case FB_FUNCMODE_THISCALL
+		function = "x86_thiscall "
 	end select
 end function
 
@@ -2366,7 +2368,12 @@ private sub _emitFbctinfEnd( )
 	ln = "@__fbctinf = internal constant "
 	ln += hEmitStrLitType( ctx.fbctinf_len )
 	ln += " c""" + ctx.fbctinf + """"
-	ln += ", section ""." + FB_INFOSEC_NAME + """"
+	if (fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_DARWIN) then
+		'' Must specify a segment name (can use any name)
+		ln += ", section ""__DATA," + FB_INFOSEC_NAME + """"
+	else
+		ln += ", section ""." + FB_INFOSEC_NAME + """"
+	end if
 	hWriteLine( ln )
 
 	'' Append to the special llvm.used symbol to ensure it won't be

@@ -32,6 +32,7 @@ GREP := grep
 SED := sed
 ECHO := echo
 PRINTF := printf
+CAT := cat
 
 ifndef FBC
 FBC := fbc$(EXEEXT)
@@ -78,7 +79,7 @@ ifeq ($(TARGET_OS),win32)
     FBCU_LIBS += -l user32
 endif
 
-FBC_CFLAGS := -c -w 3 -i $(FBCU_INC) -m $(MAINBAS)
+FBC_CFLAGS := -c -w 3 -Wc -Wno-tautological-compare -i $(FBCU_INC) -m $(MAINBAS)
 ifneq ($(HOST),dos)
 	FBC_CFLAGS += -mt
 endif
@@ -142,7 +143,7 @@ all : make_fbcunit $(UNIT_TESTS_OBJ_LST) build_tests run_tests
 make_fbcunit : $(FBCU_BIN)
 
 $(FBCU_BIN) :
-	cd $(FBCU_DIR) && make FPU=$(FPU) ARCH=$(ARCH) TARGET=$(TARGET)
+	cd $(FBCU_DIR) && $(MAKE) FPU=$(FPU) ARCH=$(ARCH) TARGET=$(TARGET)
 
 # ------------------------------------------------------------------------
 # Auto-generate the file UNIT_TESTS_INC - needed by this makefile
@@ -195,11 +196,11 @@ clean_main_exe :
 clean_tests :
 	@$(ECHO) Cleaning unit-tests files ...
 	@$(RM) ./$(MAINBAS).o
-	@if [ -f $(UNIT_TESTS_OBJ_LST) ]; then $(XARGS) -r -a $(UNIT_TESTS_OBJ_LST) $(RM) ; fi
+	@if [ -f $(UNIT_TESTS_OBJ_LST) ]; then $(CAT) $(UNIT_TESTS_OBJ_LST) | $(XARGS) -r $(RM) ; fi
 
 .PHONY: clean_fbcu
 clean_fbcu :
-	cd $(FBCU_DIR) && make clean
+	cd $(FBCU_DIR) && $(MAKE) clean
 
 .PHONY: clean_include
 clean_include :

@@ -7,46 +7,19 @@
 '' --------
 
 Type Rational
-	As Integer	numerator, denominator
+	As Integer numerator, denominator
 End Type
 
-Scope
+' Create and initialize a "rational" and store its address.
+Dim p As Rational Ptr = New Rational(3, 4)
 
-	' Create and initialize a "rational" and store its address.
-	Dim p As Rational Ptr = New Rational(3, 4)
-  
-	' test if null return pointer
-	If (p = 0) Then
-		Print "Error: unable to allocate memory, quitting."
-		End -1
-	End If
-
+' Test if null return pointer
+If (p = 0) Then
+	Print "Error: unable to allocate memory"
+Else
 	Print p->numerator & "/" & p->denominator
-
-	' Destroy the rational and give its memory back to the system. 
+	' Destroy the rational and give its memory back to the system.
 	Delete p
-
-End Scope
-
-Scope
-
-	' Allocate memory for 100 integers and store the address of the first one.
-	Dim p As Integer Ptr = New Integer[100]
-
-	' test if null return pointer
-	If (p = 0) Then
-		Print "Error: unable to allocate memory, quitting."
-		End -1
-	End If
-
-	' Assign some values to the integers in the array.
-	For i As Integer = 0 To 99
-		p[i] = i
-	Next
-
-	' Free the entire integer array.
-	Delete[] p
-
-End Scope
+End If
 
 Sleep

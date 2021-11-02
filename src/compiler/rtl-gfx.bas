@@ -732,11 +732,11 @@ declare function hPorts_cb _
 			NULL, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
 			5, _
 			{ _
-				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, FALSE, 0, TRUE ), _
-				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, FALSE, 0, TRUE ), _
-				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ) _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, FALSE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, FALSE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ) _
 			} _
 		), _
 		/' function getmouse overload _
@@ -753,11 +753,11 @@ declare function hPorts_cb _
 			NULL, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
 			5, _
 			{ _
-				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, FALSE, 0, TRUE ), _
-				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, FALSE, 0, TRUE ), _
-				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ) _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, FALSE, 0  ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, FALSE, 0 ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0 ) _
 			} _
 		), _
 		/' function setmouse _
@@ -798,16 +798,16 @@ declare function hPorts_cb _
 			@hGfxlib_cb, FB_RTL_OPT_NOQB, _
 			10, _
 			{ _
-				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE, 0, TRUE ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ), _
-				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0, TRUE ) _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE, 0 ), _
+				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_SINGLE, FB_PARAMMODE_BYREF, TRUE, 0 ) _
 			} _
 		), _
 		/' function stick( byval n as const long ) as long '/ _
@@ -830,28 +830,53 @@ declare function hPorts_cb _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
-		/' sub screeninfo _
+		/' sub screeninfo overload _
 			( _
-				byref width as integer = 0, _
-				byref height as integer = 0, _
-				byref depth as integer = 0, _
-				byref bpp as integer = 0, _
-				byref pitch as integer = 0, _
-				byref refresh_rate as integer = 0, _
+				byref width as long = 0, _
+				byref height as long = 0, _
+				byref depth as long = 0, _
+				byref bpp as long = 0, _
+				byref pitch as long = 0, _
+				byref refresh_rate as long = 0, _
 				byref driver as string = byval NULL _
 			) '/ _
 		( _
-			@"screeninfo", @"fb_GfxScreenInfo", _
+			@"screeninfo", @"fb_GfxScreenInfo32", _
 			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
-			@hGfxlib_cb, FB_RTL_OPT_NOQB, _
+			@hGfxlib_cb, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
 			7, _
 			{ _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_STRING, FB_PARAMMODE_BYREF, TRUE, NULL ) _
+			} _
+		), _
+		/' sub screeninfo overload _
+			( _
+				byref width as longint, _
+				byref height as longint, _
+				byref depth as longint = 0, _
+				byref bpp as longint = 0, _
+				byref pitch as longint = 0, _
+				byref refresh_rate as longint = 0, _
+				byref driver as string = byval NULL _
+			) '/ _
+		( _
+			@"screeninfo", @"fb_GfxScreenInfo64", _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			@hGfxlib_cb, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
+			7, _
+			{ _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, FALSE ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, FALSE ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0 ), _
 				( FB_DATATYPE_STRING, FB_PARAMMODE_BYREF, TRUE, NULL ) _
 			} _
 		), _
@@ -917,29 +942,54 @@ declare function hPorts_cb _
 				( typeAddrOf( typeSetIsConst( FB_DATATYPE_VOID ) ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
-		/' function imageinfo _
+		/' function imageinfo overload _
 			( _
 				byval img	  as const any ptr, _
-				byref width   as integer = 0, _
-				byref height  as integer = 0, _
-				byref bpp	  as integer = 0, _
-				byref pitch   as integer = 0, _
+				byref width   as long = 0, _
+				byref height  as long = 0, _
+				byref bpp	  as long = 0, _
+				byref pitch   as long = 0, _
 				byref imgdata as any ptr = 0, _
-				byref size	  as integer = 0 _
+				byref size	  as long = 0 _
 			) as long '/ _
 		( _
-			@"imageinfo", @"fb_GfxImageInfo", _
+			@"imageinfo", @"fb_GfxImageInfo32", _
 			FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
-			@hGfxlib_cb, FB_RTL_OPT_NOQB, _
+			@hGfxlib_cb, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
 			7, _
 			{ _
 				( typeAddrOf( typeSetIsConst( FB_DATATYPE_VOID ) ), FB_PARAMMODE_BYVAL, FALSE ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ), _
 				( typeAddrOf( FB_DATATYPE_VOID ), FB_PARAMMODE_BYREF, TRUE, 0 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, 0 ) _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, 0 ) _
+			} _
+		), _
+		/' function imageinfo overload _
+			( _
+				byval img	  as const any ptr, _
+				byref width   as longint, _
+				byref height  as longint, _
+				byref bpp	  as longint = 0, _
+				byref pitch   as longint = 0, _
+				byref imgdata as any ptr = 0, _
+				byref size	  as longint = 0 _
+			) as long '/ _
+		( _
+			@"imageinfo", @"fb_GfxImageInfo64", _
+			FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			@hGfxlib_cb, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
+			7, _
+			{ _
+				( typeAddrOf( typeSetIsConst( FB_DATATYPE_VOID ) ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, FALSE ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, FALSE ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( typeAddrOf( FB_DATATYPE_VOID ), FB_PARAMMODE_BYREF, TRUE, 0 ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, 0 ) _
 			} _
 		), _
 		/' sub imageconvertrow _
@@ -972,7 +1022,7 @@ declare function hPorts_cb _
 			@hGfxlib_cb, FB_RTL_OPT_NOQB, _
 			1, _
 			{ _
-				( typeAddrOf( FB_DATATYPE_VOID ), FB_PARAMMODE_BYVAL, TRUE, 0, TRUE ) _
+				( typeAddrOf( FB_DATATYPE_VOID ), FB_PARAMMODE_BYVAL, TRUE, 0 ) _
 			} _
 		), _
 		/' sub screencontrol overload _
@@ -993,22 +1043,43 @@ declare function hPorts_cb _
 		/' sub screencontrol overload _
 			( _
 				byval what as const long, _
-				byref param1 as integer = &h80000000, _
-				byref param2 as integer = &h80000000, _
-				byref param3 as integer = &h80000000, _
-				byref param4 as integer = &h80000000 _
+				byref param1 as long = &h80000000, _
+				byref param2 as long = &h80000000, _
+				byref param3 as long = &h80000000, _
+				byref param4 as long = &h80000000 _
 			) '/ _
 		( _
-			@"screencontrol", @"fb_GfxControl_i", _
+			@"screencontrol", @"fb_GfxControl_i32", _
 			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
 			@hGfxlib_cb, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
 			5, _
 			{ _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, &h80000000 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, &h80000000 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, &h80000000 ), _
-				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYREF, TRUE, &h80000000 ) _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, &h80000000 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, &h80000000 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, &h80000000 ), _
+				( FB_DATATYPE_LONG, FB_PARAMMODE_BYREF, TRUE, &h80000000 ) _
+			} _
+		), _
+		/' sub screencontrol overload _
+			( _
+				byval what as const long, _
+				byref param1 as longint, _
+				byref param2 as longint = &h80000000, _
+				byref param3 as longint = &h80000000, _
+				byref param4 as longint = &h80000000 _
+			) '/ _
+		( _
+			@"screencontrol", @"fb_GfxControl_i64", _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			@hGfxlib_cb, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
+			5, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, FALSE ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, &h80000000 ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, &h80000000 ), _
+				( FB_DATATYPE_LONGINT, FB_PARAMMODE_BYREF, TRUE, &h80000000 ) _
 			} _
 		), _
 		/' function screenglproc( byval proc as const zstring ptr ) as any ptr '/ _
@@ -1337,7 +1408,8 @@ private function hPorts_cb _
 		byval sym as FBSYMBOL ptr _
 	) as integer
 
-    static as integer libsAdded = FALSE
+	'' minor optimization to avoid having to lookup env.libs hash
+	fbRestartableStaticVariable( integer, libsAdded, FALSE )
 
 	if( libsadded = FALSE ) then
 		libsAdded = TRUE

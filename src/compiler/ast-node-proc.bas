@@ -33,6 +33,7 @@ declare function hInitVptr _
 	) as ASTNODE ptr
 declare sub hCallCtors( byval n as ASTNODE ptr, byval sym as FBSYMBOL ptr )
 declare sub hCallDtors( byval proc as FBSYMBOL ptr )
+declare sub hCallDeleteDtor( byval proc as FBSYMBOL ptr )
 declare sub hGenStaticInstancesDtors( byval proc as FBSYMBOL ptr )
 declare sub hGenGlobalInstancesCtor( )
 
@@ -110,8 +111,8 @@ private sub hProcFlush _
 		byval doemit as integer _
 	)
 
-    dim as ASTNODE ptr n = any, nxt = any
-    dim as FBSYMBOL ptr sym = any
+	dim as ASTNODE ptr n = any, nxt = any
+	dim as FBSYMBOL ptr sym = any
 
 	sym = p->sym
 
@@ -152,19 +153,19 @@ private sub hProcFlush _
 		n = nxt
 	loop
 
-    '' emit footer
-    if( ast.doemit ) then
-    	irEmitPROCEND( sym, p->block.initlabel, p->block.exitlabel )
+	'' emit footer
+	if( ast.doemit ) then
+		irEmitPROCEND( sym, p->block.initlabel, p->block.exitlabel )
 
 		'' Emit static local variables
 		irProcAllocStaticVars( symbGetProcSymbTbHead( sym ) )
-    end if
+	end if
 
-    '' del symbols from hash and symbol tb's
-    symbDelSymbolTb( @sym->proc.symtb, FALSE )
+	'' del symbols from hash and symbol tb's
+	symbDelSymbolTb( @sym->proc.symtb, FALSE )
 
-    ''
-    symbNestEnd( FALSE )
+	''
+	symbNestEnd( FALSE )
 
 	hDelProcNode( p )
 
@@ -178,9 +179,9 @@ private sub hProcFlushAll _
 		_
 	)
 
-    dim as ASTNODE ptr n = any
-    dim as integer doemit = any
-    dim as FBSYMBOL ptr sym = any
+	dim as ASTNODE ptr n = any
+	dim as integer doemit = any
+	dim as FBSYMBOL ptr sym = any
 
 	'' procs should be sorted by include file
 
@@ -500,7 +501,7 @@ sub astProcBegin( byval sym as FBSYMBOL ptr, byval ismain as integer )
 			astNewVAR( symbGetParamVar( argv ) ) )
 
 	'' Destructor?
-	elseif( symbIsDestructor( sym ) and enable_implicit_code ) then
+	elseif( (symbIsDestructor0( sym ) or symbIsDestructor1( sym )) and enable_implicit_code ) then
 		''
 		'' If the UDT has a vptr, reset it at the top of destructors,
 		'' such that the vptr always matches the type of object that
@@ -633,9 +634,9 @@ private function hCallProfiler _
 end function
 
 function astProcEnd( byval callrtexit as integer ) as integer
-    static as integer rec_cnt = 0
+	static as integer rec_cnt = 0
 	dim as integer res = any, do_flush = any, enable_implicit_code = any
-    dim as FBSYMBOL ptr sym = any
+	dim as FBSYMBOL ptr sym = any
 	dim as ASTNODE ptr n = any
 
 	n = ast.proc.curr
@@ -672,11 +673,16 @@ function astProcEnd( byval callrtexit as integer ) as integer
 	res = (symbCheckLabels(symbGetProcSymbTbHead(parser.currproc)) = 0)
 
 	if( res ) then
-		'' Destructor?
-		if( symbIsDestructor( sym ) and enable_implicit_code ) then
+		'' Complete Destructor? (D1) 
+		if( symbIsDestructor1( sym ) and enable_implicit_code ) then
 			'' Call destructors, behind the exit label, so they'll
 			'' always be called, even with early returns.
 			hCallDtors( sym )
+		end if
+
+		'' Deleting Destructor? (D0)
+		if( symbIsDestructor0( sym ) and enable_implicit_code ) then
+			hCallDeleteDtor( sym )
 		end if
 
 		'' update proc's breaks list, adding calls to destructors when needed
@@ -756,12 +762,15 @@ function astProcEnd( byval callrtexit as integer ) as integer
 	symbNestEnd( FALSE )
 
 	if( env.clopt.vectorize >= FB_VECTORIZE_NORMAL ) then
-		astProcVectorize( n->l )
+		'' only gas + SSE will expect AST_OP_HADD or AST_OP_SWZREP
+		if( env.clopt.backend = FB_BACKEND_GAS ) then
+			astProcVectorize( n->l )
+		end if
 	end if
 
 	''
 	if( do_flush ) then
-	    if( n->block.proc.ismain = FALSE ) then
+		if( n->block.proc.ismain = FALSE ) then
 			hProcFlush( n, TRUE )
 		else
 			hProcFlushAll( )
@@ -772,20 +781,20 @@ function astProcEnd( byval callrtexit as integer ) as integer
 	ast.proc.curr = ast.proc.head
 	ast.currblock = ast.proc.head
 
-    parser.scope = FB_MAINSCOPE
-    parser.currproc = env.main.proc
-    parser.currblock = env.main.proc
+	parser.scope = FB_MAINSCOPE
+	parser.currproc = env.main.proc
+	parser.currblock = env.main.proc
 
-    ''
-    rec_cnt -= 1
+	''
+	rec_cnt -= 1
 
 	function = res
 
 end function
 
 private function hDeclVarsForProcParams( byval proc as FBSYMBOL ptr ) as integer
-    dim as integer i = any
-    dim as FBSYMBOL ptr p = any
+	dim as integer i = any
+	dim as FBSYMBOL ptr p = any
 
 	function = FALSE
 
@@ -816,8 +825,8 @@ private function hDeclVarsForProcParams( byval proc as FBSYMBOL ptr ) as integer
 end function
 
 private sub hLoadProcResult( byval proc as FBSYMBOL ptr )
-    dim as FBSYMBOL ptr s = any
-    dim as ASTNODE ptr n = any
+	dim as FBSYMBOL ptr s = any
+	dim as ASTNODE ptr n = any
 
 	s = symbGetProcResult( proc )
 
@@ -842,7 +851,7 @@ private sub hLoadProcResult( byval proc as FBSYMBOL ptr )
 end sub
 
 private function hModLevelIsEmpty( byval p as ASTNODE ptr ) as integer
-    dim as ASTNODE ptr n = any, nxt = any
+	dim as ASTNODE ptr n = any, nxt = any
 
 	'' an empty module-level proc will have just the
 	'' initial and final labels as nodes and nothing else
@@ -1269,6 +1278,26 @@ private sub hCallFieldDtors _
 
 end sub
 
+private sub hCallDeleteDtor _
+	( _
+		byval proc as FBSYMBOL ptr _
+	)
+
+	dim as FBSYMBOL ptr parent = any, dtor1 = any, this_ = any
+	dim as ASTNODE ptr thisptr = any, tree = any
+
+	parent = symbGetNamespace( proc )
+	dtor1 = symbGetCompDtor1( parent )
+	if( dtor1 = NULL ) then
+		exit sub
+	end if
+	this_ = symbGetParamVar( symbGetProcHeadParam( proc ) )
+	thisptr = astNewADDROF( astBuildVarField( this_ ) )
+	tree = astBuildDeleteOp( AST_OP_DEL, thisptr )
+	astAdd( tree )
+
+end sub
+
 private sub hCallBaseDtor _
 	( _
 		byval parent as FBSYMBOL ptr, _
@@ -1293,7 +1322,7 @@ private sub hCallBaseDtor _
 	'' Just like derived classes are not responsible for initializing their
 	'' base class, they shouldn't be made responsible for cleaning it up.
 
-	dtor = symbGetCompDtor( symbGetSubtype( base_ ) )
+	dtor = symbGetCompDtor1( symbGetSubtype( base_ ) )
 	if( dtor = NULL ) then
 		exit sub
 	end if
@@ -1322,7 +1351,7 @@ private sub hCallDtors( byval proc as FBSYMBOL ptr )
 	parent = symbGetNamespace( proc )
 
 	'' 1st) fields dtors
-    hCallFieldDtors( parent, proc )
+	hCallFieldDtors( parent, proc )
 
 	'' 2nd) base dtor
 	hCallBaseDtor( parent, proc )
@@ -1367,9 +1396,9 @@ private sub hGenStaticInstancesDtors( byval proc as FBSYMBOL ptr )
 		exit sub
 	end if
 
-    '' for each node..
-    wrap = listGetHead( dtorlist )
-    do while( wrap <> NULL )
+	'' for each node..
+	wrap = listGetHead( dtorlist )
+	do while( wrap <> NULL )
 		astProcBegin( wrap->proc, FALSE )
 		n = ast.proc.curr
 
@@ -1383,13 +1412,13 @@ private sub hGenStaticInstancesDtors( byval proc as FBSYMBOL ptr )
 		'' proc is flushed
 		hProcFlush( n, TRUE )
 
-    	wrap = listGetNext( wrap )
-    loop
+		wrap = listGetNext( wrap )
+	loop
 
-    '' destroy list
-    listEnd( dtorlist )
-    deallocate( proc->proc.ext->statdtor )
-    proc->proc.ext->statdtor = NULL
+	'' destroy list
+	listEnd( dtorlist )
+	deallocate( proc->proc.ext->statdtor )
+	proc->proc.ext->statdtor = NULL
 end sub
 
 '':::::
@@ -1414,16 +1443,16 @@ function astProcAddStaticInstance _
 		listInit( dtorlist, 16, len( FB_DTORWRAPPER ), LIST_FLAGS_NOCLEAR )
 	end if
 
-    ''
-    wrap = listNewNode( dtorlist )
+	''
+	wrap = listNewNode( dtorlist )
 
 	proc = symbAddProc( symbPreAddProc( NULL ), symbUniqueLabel( ), NULL, FB_DATATYPE_VOID, NULL, _
 	                    FB_SYMBATTRIB_PRIVATE, FB_PROCATTRIB_NONE, FB_FUNCMODE_CDECL, FB_SYMBOPT_DECLARING )
 
-    wrap->proc = proc
-    wrap->sym = sym
+	wrap->proc = proc
+	wrap->sym = sym
 
-    '' can't be undefined
+	'' can't be undefined
 	symbSetCantUndef( sym )
 
 	function = proc
@@ -1438,16 +1467,16 @@ sub astProcAddGlobalInstance _
 		byval call_dtor as integer _
 	)
 
-    dim as FB_GLOBINSTANCE ptr wrap = any
+	dim as FB_GLOBINSTANCE ptr wrap = any
 
-    ''
-    wrap = listNewNode( @ast.globinst.list )
+	''
+	wrap = listNewNode( @ast.globinst.list )
 
-    wrap->sym = sym
-    wrap->initree = initree
+	wrap->sym = sym
+	wrap->initree = initree
 	wrap->call_dtor = call_dtor
 
-    '' can't be undefined
+	'' can't be undefined
 	symbSetCantUndef( sym )
 
 	if( initree <> NULL ) then
@@ -1525,5 +1554,5 @@ private sub hGenGlobalInstancesCtor( )
 		astProcEnd( FALSE )
 	end if
 
-    '' list will be deleted by astProcListEnd( )
+	'' list will be deleted by astProcListEnd( )
 end sub

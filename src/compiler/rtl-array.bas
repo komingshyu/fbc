@@ -246,7 +246,7 @@
 				( typeSetIsConst( FB_DATATYPE_UINT ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_UINT ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
-				( typeAddrOf( typeSetIsConst( FB_DATATYPE_CHAR ) ), FB_PARAMMODE_BYVAL, FALSE, 0, TRUE ) _
+				( typeAddrOf( typeSetIsConst( FB_DATATYPE_CHAR ) ), FB_PARAMMODE_BYVAL, FALSE, 0 ) _
 			} _
 		), _
 		/' function fb_ArrayBoundChk _
@@ -267,7 +267,7 @@
 				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
-				( typeAddrOf( typeSetIsConst( FB_DATATYPE_CHAR ) ), FB_PARAMMODE_BYVAL, FALSE, 0, TRUE ) _
+				( typeAddrOf( typeSetIsConst( FB_DATATYPE_CHAR ) ), FB_PARAMMODE_BYVAL, FALSE, 0 ) _
 			} _
 		), _
 		/' EOL '/ _
@@ -331,7 +331,7 @@ private sub hCheckDtor _
 
 	if( dtor = NULL ) then exit sub
 
-	assert( symbIsDestructor( dtor ) )
+	assert( symbIsDestructor1( dtor ) )
 
 	if( check_access ) then
 		if( symbCheckAccess( dtor ) = FALSE ) then
@@ -370,7 +370,7 @@ function rtlArrayClear( byval arrayexpr as ASTNODE ptr ) as ASTNODE ptr
 	if( dtype = FB_DATATYPE_STRUCT ) then
 		subtype = astGetSubtype( arrayexpr )
 		ctor = symbGetCompDefCtor( subtype )
-		dtor = symbGetCompDtor( subtype )
+		dtor = symbGetCompDtor1( subtype )
 
 		'' No default ctor, but others? Then the rtlib cannot just clear
 		'' that array of objects.
@@ -453,7 +453,7 @@ function rtlArrayErase _
 	if( dtype = FB_DATATYPE_STRUCT ) then
 		subtype = astGetSubtype( arrayexpr )
 		ctor = symbGetCompDefCtor( subtype )
-		dtor = symbGetCompDtor( subtype )
+		dtor = symbGetCompDtor1( subtype )
 
 		'' No default ctor, but others? Then the rtlib cannot just clear
 		'' that array of objects.
@@ -534,7 +534,7 @@ private sub hGetCtorDtorForRedim _
 
 	if( typeGetDtAndPtrOnly( dtype ) = FB_DATATYPE_STRUCT ) then
 		ctor = symbGetCompDefCtor( subtype )
-		dtor = symbGetCompDtor( subtype )
+		dtor = symbGetCompDtor1( subtype )
 
 		'' Assuming there aren't any other ctors if there is no default one,
 		'' because if it were possible to declare such a dynamic array,
@@ -631,10 +631,15 @@ function rtlArrayRedim _
 		'' lbound
 		expr = exprTB(i, 0)
 
-    	'' convert to int
-    	if( astGetDataType( expr ) <> FB_DATATYPE_INTEGER ) then
-    		expr = astNewCONV( FB_DATATYPE_INTEGER, NULL, expr )
-    	end if
+		'' convert to int
+		if( astGetDataType( expr ) <> FB_DATATYPE_INTEGER ) then
+			expr = astNewCONV( FB_DATATYPE_INTEGER, NULL, expr )
+
+			if( expr = NULL ) then
+				exit function
+			end if
+
+		end if
 
 		if( astNewARG( proc, expr ) = NULL ) then
 			exit function
@@ -643,10 +648,15 @@ function rtlArrayRedim _
 		'' ubound
 		expr = exprTB(i, 1)
 
-    	'' convert to int
-    	if( astGetDataType( expr ) <> FB_DATATYPE_INTEGER ) then
-    		expr = astNewCONV( FB_DATATYPE_INTEGER, NULL, expr )
-    	end if
+		'' convert to int
+		if( astGetDataType( expr ) <> FB_DATATYPE_INTEGER ) then
+			expr = astNewCONV( FB_DATATYPE_INTEGER, NULL, expr )
+
+			if( expr = NULL ) then
+				exit function
+			end if
+
+		end if
 
 		if( astNewARG( proc, expr ) = NULL ) then
 			exit function

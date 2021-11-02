@@ -128,8 +128,8 @@ private sub hCheckPrototype _
 		byval mode as integer _
 	)
 
-    dim as FBSYMBOL ptr param = any, proto_param = any
-    dim as integer params = any, proto_params = any, i = any
+	dim as FBSYMBOL ptr param = any, proto_param = any
+	dim as integer params = any, proto_params = any, i = any
 
 	'' Check ALIAS id
 	if( (palias <> NULL) and ((proto->stats and FB_SYMBSTATS_HASALIAS) <> 0) ) then
@@ -179,21 +179,21 @@ private sub hCheckPrototype _
 	'' the common parameters, for better error recovery.
 	i = 1
 	while( (i <= proto_params) and (i <= params) )
-        dim as integer dtype = symbGetFullType( proto_param )
+		dim as integer dtype = symbGetFullType( proto_param )
 
-    	'' convert any AS ANY arg to the final one
-    	if( typeGet( dtype ) = FB_DATATYPE_VOID ) then
-    		proto_param->typ = param->typ
-    		proto_param->subtype = param->subtype
+		'' convert any AS ANY arg to the final one
+		if( typeGet( dtype ) = FB_DATATYPE_VOID ) then
+			proto_param->typ = param->typ
+			proto_param->subtype = param->subtype
 
-    	'' check if types don't conflit
-    	else
-    		if( param->typ <> dtype ) then
-                hParamError( proc, i )
-            elseif( param->subtype <> symbGetSubtype( proto_param ) ) then
-                hParamError( proc, i )
-    		end if
-    	end if
+		'' check if types don't conflit
+		else
+			if( param->typ <> dtype ) then
+				hParamError( proc, i )
+			elseif( param->subtype <> symbGetSubtype( proto_param ) ) then
+				hParamError( proc, i )
+			end if
+		end if
 
 		'' and mode
 		if( param->param.mode <> proto_param->param.mode ) then
@@ -208,19 +208,19 @@ private sub hCheckPrototype _
 			end if
 		end if
 
-    	'' check names and change to the new one if needed
-    	if( param->param.mode <> FB_PARAMMODE_VARARG ) then
-    		symbSetName( proto_param, symbGetName( param ) )
+		'' check names and change to the new one if needed
+		if( param->param.mode <> FB_PARAMMODE_VARARG ) then
+			symbSetName( proto_param, symbGetName( param ) )
 
-    		'' as both have the same type, re-set the suffix, because for example
-    		'' "a as integer" on the prototype and "a%" or just "a" on the proc
-    		'' declaration when in a defint context is allowed in QB
-    		if( symbIsSuffixed( param ) ) then
-    			symbGetAttrib( proto_param ) or= FB_SYMBATTRIB_SUFFIXED
-    		else
-    		    symbGetAttrib( proto_param ) and = not FB_SYMBATTRIB_SUFFIXED
-    		end if
-    	end if
+			'' as both have the same type, re-set the suffix, because for example
+			'' "a as integer" on the prototype and "a%" or just "a" on the proc
+			'' declaration when in a defint context is allowed in QB
+			if( symbIsSuffixed( param ) ) then
+				symbGetAttrib( proto_param ) or= FB_SYMBATTRIB_SUFFIXED
+			else
+				symbGetAttrib( proto_param ) and = not FB_SYMBATTRIB_SUFFIXED
+			end if
+		end if
 
 		'' Warn about mismatching param initializers?
 		'' If both params are optional, compare the two initializers
@@ -230,8 +230,8 @@ private sub hCheckPrototype _
 			end if
 		end if
 
-    	proto_param = proto_param->next
-    	param = param->next
+		proto_param = proto_param->next
+		param = param->next
 		i += 1
 	wend
 
@@ -504,12 +504,12 @@ function cProcReturnMethod( byval dtype as FB_DATATYPE ) as FB_PROC_RETURN_METHO
 end function
 
 function cProcCallingConv( byval default as FB_FUNCMODE ) as FB_FUNCMODE
-    '' Use the default FBCALL?
-    if( default = FB_FUNCMODE_FBCALL ) then
-        default = env.target.fbcall
-    end if
+	'' Use the default FBCALL?
+	if( default = FB_FUNCMODE_FBCALL ) then
+		default = env.target.fbcall
+	end if
 
-	'' (CDECL|STDCALL|PASCAL)?
+	'' (CDECL|STDCALL|PASCAL|THISCALL)?
 	select case as const lexGetToken( )
 	case FB_TK_CDECL
 		function = FB_FUNCMODE_CDECL
@@ -524,6 +524,16 @@ function cProcCallingConv( byval default as FB_FUNCMODE ) as FB_FUNCMODE
 	case FB_TK_PASCAL
 		function = FB_FUNCMODE_PASCAL
 		lexSkipToken( LEXCHECK_POST_SUFFIX )
+
+	case FB_TK_THISCALL
+		'' ignore thiscall if '-z no-thiscall' was given
+		if( env.clopt.nothiscall = FALSE ) then
+			'' keep the thiscall call convention even if the target/archictecture wont't support it
+			'' this will allow us to check that the declaration matches the definition.  Also,
+			'' gcc supports extensions for using thiscall even with normal procedures
+			function = FB_FUNCMODE_THISCALL
+		end if
+		lexSkipToken( )
 
 	case else
 		select case as const parser.mangling
@@ -603,7 +613,7 @@ private function hCheckOpOvlParams _
 	) as integer
 
 	dim as integer found_mismatch = any
-    dim as integer is_method = symbIsMethod( proc )
+	dim as integer is_method = symbIsMethod( proc )
 
 #macro hCheckParam( proc, param, num )
 	'' vararg?
@@ -1056,7 +1066,9 @@ function cProcHeader _
 		if( tk = FB_TK_CONSTRUCTOR ) then
 			pattrib or= FB_PROCATTRIB_CONSTRUCTOR or FB_PROCATTRIB_OVERLOADED
 		else
-			pattrib or= FB_PROCATTRIB_DESTRUCTOR
+			'' destructor defined by user source is always the complete dtor
+			'' the deleting dtor is implicitly defined later
+			pattrib or= FB_PROCATTRIB_DESTRUCTOR1
 		end if
 
 	case FB_TK_OPERATOR
@@ -1222,6 +1234,12 @@ function cProcHeader _
 		'' Procedure/property ID
 		head_proc = hGetId( parent, @id, @dtype, _
 				(tk = FB_TK_SUB) or (tk = FB_TK_PROPERTY) )
+
+		if( fbLangOptIsSet( FB_LANG_OPT_SUFFIX ) ) then
+			if( dtype <> FB_DATATYPE_INVALID ) then
+				attrib or= FB_SYMBATTRIB_SUFFIXED 
+			end if
+		end if
 
 		proc = symbPreAddProc( @id )
 	end select
@@ -1464,6 +1482,19 @@ function cProcHeader _
 			cOverrideAttribute( proc )
 		end if
 
+		'' destructor? maybe implicitly declare the deleting destructor too
+		if( tk = FB_TK_DESTRUCTOR ) then
+			'' fbc won't generate any code that calls the deleting destructor
+			'' so don't create the deleting destructor unless we're binding to c++
+			if( symbGetMangling( parent ) = FB_MANGLING_CPP ) then
+				'' - inherit all the attribs from the declared destructor
+				''   except for the destructor type
+				dim dtor0 as FBSYMBOL ptr = symbPreAddProc( NULL )
+				symbAddProcInstanceParam( parent, dtor0 )
+				dtor0 = symbAddCtor( dtor0, NULL, attrib, ((pattrib and not FB_PROCATTRIB_DESTRUCTOR1) or FB_PROCATTRIB_DESTRUCTOR0), mode )
+			end if
+		end if
+
 		if( tk = FB_TK_PROPERTY ) then
 			hSetUdtPropertyFlags( parent, is_indexed, is_get )
 		end if
@@ -1554,7 +1585,7 @@ function cProcHeader _
 	case FB_TK_CONSTRUCTOR
 		head_proc = symbGetCompCtorHead( parent )
 	case FB_TK_DESTRUCTOR
-		head_proc = symbGetCompDtor( parent )
+		head_proc = symbGetCompDtor1( parent )
 	case FB_TK_OPERATOR
 		head_proc = symbGetCompOpOvlHead( parent, op )
 	end select
@@ -1729,8 +1760,8 @@ end sub
 ''                   (SUB|FUNCTION|CONSTRUCTOR|DESTRUCTOR|OPERATOR) ProcHeader .
 sub cProcStmtBegin( byval attrib as FB_SYMBATTRIB, byval pattrib as FB_PROCATTRIB )
 	dim as integer tkn = any, is_nested = any
-    dim as FBSYMBOL ptr proc = any
-    dim as FB_CMPSTMTSTK ptr stk = any
+	dim as FBSYMBOL ptr proc = any
+	dim as FB_CMPSTMTSTK ptr stk = any
 
 	if( (attrib and (FB_SYMBATTRIB_PUBLIC or FB_SYMBATTRIB_PRIVATE)) = 0 ) then
 		if( env.opt.procpublic ) then
@@ -1762,7 +1793,9 @@ sub cProcStmtBegin( byval attrib as FB_SYMBATTRIB, byval pattrib as FB_PROCATTRI
 		if( fbLangOptIsSet( FB_LANG_OPT_CLASS ) = FALSE ) then
 			errReportNotAllowed( FB_LANG_OPT_CLASS )
 		else
-			pattrib or= FB_PROCATTRIB_DESTRUCTOR
+			'' destructor defined by user source is always the complete dtor
+			'' the deleting dtor is implicitly defined later
+			pattrib or= FB_PROCATTRIB_DESTRUCTOR1
 		end if
 
 		hDisallowStaticAttrib( attrib, pattrib )
@@ -1822,7 +1855,7 @@ sub cProcStmtBegin( byval attrib as FB_SYMBATTRIB, byval pattrib as FB_PROCATTRI
 	stk->proc.endlabel = astGetProcExitlabel( ast.proc.curr )
 end sub
 
-'' ProcStmtEnd  =  END (SUB | FUNCTION) .
+'' ProcStmtEnd  =  END (SUB | FUNCTION | OPERATOR | CONSTRUCTOR | DESTRUCTOR | PROPERTY) .
 sub cProcStmtEnd( )
 	dim as FB_CMPSTMTSTK ptr stk = any
 	dim as FBSYMBOL ptr proc_res = any
@@ -1868,7 +1901,7 @@ sub cProcStmtEnd( )
 		end if
 	end if
 
-    '' always finish
+	'' always finish
 	astProcEnd( FALSE )
 
 	'' Close namespace again if cProcHeader() opened it

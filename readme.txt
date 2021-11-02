@@ -1,6 +1,6 @@
 
     FreeBASIC - A multi-platform BASIC Compiler
-    Copyright (C) 2004-2020 The FreeBASIC development team.
+    Copyright (C) 2004-2021 The FreeBASIC development team.
 
     Official site:      https://freebasic.net/
     Forum:              https://freebasic.net/forum/
@@ -26,15 +26,23 @@
     FreeBASIC gives you the FreeBASIC compiler program (fbc or fbc.exe),
     plus the tools and libraries used by it. fbc is a command line program
     that takes FreeBASIC source code files (*.bas) and compiles them into
-    executables.
+    executables.  In the combined standalone packages for windows, the main
+    executable is named fbc32.exe (for 32-bit) and fbc64.exe (for 64-bit)
 
     fbc is typically invoked by Integrated Development Environments (IDEs) or
     text editors, from a terminal or command prompt, or through build-systems
     such as makefiles. fbc itself is not a graphical code editor or IDE!
 
     Win32 (similar for Win64):
-      Download and extract latest FreeBASIC-x.xx.x-win32.zip or
-      download and extract latest FreeBASIC-x.xx.x-win64.zip.
+      Separate 32-bit and 64-bit standalone packages:
+        Download and extract latest:
+           - FreeBASIC-x.xx.x-win32.zip or FreeBASIC-x.xx.x-win32.7z for 32-bit
+           - FreeBASIC-x.xx.x-win64.zip or FreeBASIC-x.xx.x-win64.7z for 64-bit
+      Combined 32-bit and 64-bit standalone packages:
+        Download and extract latest:
+           - FreeBASIC-x.xx.x-winlibs-gcc-9.3.0.7z or
+           - FreeBASIC-x.xx.x-gcc-5.2.0.7z
+           - fbc32.exe and fbc64.exe are used instead of fbc.exe
 
       Now you can use fbc.exe from the installation directory to compile FB
       programs (*.bas files) into executables (*.exe files). Open a command
@@ -71,7 +79,7 @@
         Debian/Ubuntu:
           gcc libncurses5-dev libffi-dev libgl1-mesa-dev
           libx11-dev libxext-dev libxrender-dev libxrandr-dev libxpm-dev
-          libtinfo5
+          libtinfo5 libgpm-dev
         Fedora:
           gcc ncurses-devel ncurses-compat-libs libffi-devel mesa-libGL-devel
           libX11-devel libXext-devel libXrender-devel libXrandr-devel
@@ -267,6 +275,8 @@
         "real" Rnd() algorithm
     - Nek (dave[at]nodtveidt.net)
         Win32 API headers
+    - Hung Nguyen Gia (gh_origin[at]zohomail.com)
+        Solaris and DragonFly porting and testing
     - Paul Squires (support[at]planetsquires.com)
         WinFBE IDE project and fbc compiler distribution bundle
     - Plasma

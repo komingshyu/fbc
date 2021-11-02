@@ -49,7 +49,7 @@ declare sub hRealloc _
 #endmacro
 
 '':::::
-#define CALC_LEN( p ) iif( p <> NULL, len( *src ), 0 )
+#define CALC_LEN( p ) iif( p <> NULL, len( *p ), 0 )
 
 ''::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 '' dynamic zstrings
@@ -61,9 +61,9 @@ sub DZstrZero _
 		byref dst as DZSTRING _
 	)
 
-    dst.data = NULL
-    dst.len = 0
-    dst.size = 0
+	dst.data = NULL
+	dst.len = 0
+	dst.size = 0
 
 end sub
 
@@ -96,7 +96,7 @@ end sub
 sub DZstrAssign _
 	( _
 		byref dst as DZSTRING, _
-		byval src as zstring ptr _
+		byval src as const zstring ptr _
 	)
 
 	dim as integer src_len = CALC_LEN( src )
@@ -113,7 +113,7 @@ end sub
 sub DZstrAssignW _
 	( _
 		byref dst as DZSTRING, _
-		byval src as wstring ptr _
+		byval src as const wstring ptr _
 	)
 
 	dim as integer src_len = CALC_LEN( src )
@@ -148,7 +148,7 @@ end sub
 sub DZstrConcatAssign _
 	( _
 		byref dst as DZSTRING, _
-		byval src as zstring ptr _
+		byval src as const zstring ptr _
 	)
 
 	dim as integer src_len = CALC_LEN( src )
@@ -166,7 +166,7 @@ end sub
 sub DZstrConcatAssignW _
 	( _
 		byref dst as DZSTRING, _
-		byval src as wstring ptr _
+		byval src as const wstring ptr _
 	)
 
 	dim as integer src_len = CALC_LEN( src )
@@ -209,9 +209,9 @@ sub DWstrZero _
 		byref dst as DWSTRING _
 	)
 
-    dst.data = NULL
-    dst.len = 0
-    dst.size = 0
+	dst.data = NULL
+	dst.len = 0
+	dst.size = 0
 
 end sub
 
@@ -244,7 +244,7 @@ end sub
 sub DWstrAssign _
 	( _
 		byref dst as DWSTRING, _
-		byval src as wstring ptr _
+		byval src as const wstring ptr _
 	)
 
 	dim as integer src_len = CALC_LEN( src )
@@ -261,7 +261,7 @@ end sub
 sub DWstrAssignA _
 	( _
 		byref dst as DWSTRING, _
-		byval src as zstring ptr _
+		byval src as const zstring ptr _
 	)
 
 	dim as integer src_len = CALC_LEN( src )
@@ -296,7 +296,7 @@ end sub
 sub DWstrConcatAssign _
 	( _
 		byref dst as DWSTRING, _
-		byval src as wstring ptr _
+		byval src as const wstring ptr _
 	)
 
 	dim as integer src_len = CALC_LEN( src )
@@ -314,7 +314,7 @@ end sub
 sub DWstrConcatAssignA _
 	( _
 		byref dst as DWSTRING, _
-		byval src as zstring ptr _
+		byval src as const zstring ptr _
 	)
 
 	dim as integer src_len = CALC_LEN( src )

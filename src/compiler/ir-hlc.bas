@@ -555,6 +555,13 @@ private function hEmitProcHeader _
 				'' Linux GCC only accepts this
 				ln += " __attribute__((stdcall))"
 			end select
+		case FB_FUNCMODE_THISCALL
+			select case( env.clopt.target )
+			case FB_COMPTARGET_WIN32, FB_COMPTARGET_XBOX
+				ln += " __thiscall"
+			case else
+				ln += " __attribute__((thiscall))"
+			end select
 		end select
 	end if
 
@@ -1199,6 +1206,7 @@ private sub hWriteX86F2I _
 			hWriteLine( """fistp" + rtype_suffix + " %0;""", TRUE )
 			hWriteLine( ":""=m"" (result)", TRUE )
 			hWriteLine( ":""m"" (value)"  , TRUE )
+			hWriteLine( ":""st"""  , TRUE )
 		sectionUnindent( )
 		hWriteLine( ");", TRUE )
 		hWriteLine( "return result;", TRUE )
@@ -1370,11 +1378,19 @@ private sub _emitEnd( )
 
 	sectionReturn( section )
 
+	'' even though we are putting this asm section at the end of the emitted C file
+	'' gcc might move it around when compiling the C lising and the ASM block ends up
+	'' (typically?) at the beginning of the C source.  Appears to be a change in if
+	'' gcc locates this before or after the first '.text. directive when it writes out
+	'' the ASM listing from the C listing: somewhere between gcc 7.1 and gcc 7.4.
+	'' Explicity close the .drectve section by switching to .text section and presume
+	'' that it comensates for the gcc'a choice of section location.
 	'' DLL export table
 	if( env.clopt.export and (env.target.options and FB_TARGETOPT_EXPORT) ) then
 		symbForEachGlobal( FB_SYMBCLASS_PROC, @hMaybeEmitProcExport )
 		if( len( ctx.exports ) > 0 ) then
 			hWriteLine( !"\n__asm__( \n\t\".section .drectve\\n\"\n" + ctx.exports + ");", TRUE )
+			hWriteLine( "__asm__( "".text"" );" )
 		end if
 		ctx.exports = ""
 	end if
@@ -1670,7 +1686,7 @@ end function
 
 private function symbIsCArray( byval sym as FBSYMBOL ptr ) as integer
 	'' No bydesc/byref, those are emitted as pointers...
-	if( symbIsRef( sym ) or symbIsParamBydescOrByref( sym ) or symbIsImport( sym ) ) then
+	if( symbIsRef( sym ) or symbIsParamVarBydescOrByref( sym ) or symbIsImport( sym ) ) then
 		return FALSE
 	end if
 
@@ -2677,8 +2693,23 @@ private function exprNewVREG _
 			l = exprNewUOP( AST_OP_ADDROF, l )
 		end if
 		if( have_offset ) then
-			'' Cast to ubyte ptr to work around C's pointer arithmetic
-			l = exprNewCAST( typeAddrOf( FB_DATATYPE_UBYTE ), NULL, l )
+			if( is_c_array ) then
+				'' Cast to intptr_t to work around gcc out side of array bounds
+				'' warnings if we are casting from FBSTRING array to pointer
+				'' fbc uses a kind of virtual pointer for the an array's (0,..)
+				'' index; technically this is undefinded behaviour in C and is
+				'' impossible to cast away even when using pointer only casts
+				'' in the same expression.  Some gcc optimizations cause a 
+				'' a warning when setting a pointer for the array's virtual
+				'' index location.  To fix this for compliant C code, would
+				'' need to rewrite the array descriptor to contain only the
+				'' offset value from actual memory pointer and compute the
+				'' array access fully on each array element access.   
+				l = exprNewCAST( FB_DATATYPE_INTEGER, NULL, l )
+			else
+				'' Cast to ubyte ptr to work around C's pointer arithmetic
+				l = exprNewCAST( typeAddrOf( FB_DATATYPE_UBYTE ), NULL, l )
+			end if
 			if( vreg->vidx <> NULL ) then
 				l = exprNewBOP( AST_OP_ADD, l, exprNewVREG( vreg->vidx ) )
 			end if
@@ -3556,7 +3587,12 @@ private sub _emitAsmLine( byval asmtokenhead as ASTASMTOK ptr )
 			ln += " : " + inputconstraints
 
 			'' We don't know what registers etc. will be trashed,
-			'' so assume everything...
+			'' so assume everything... except for rsp/esp - gcc requires a valid
+			'' stack to preserve registers and if the asm code clobbers esp/rsp
+			'' then there is no way to get it back after esp/rsp changes to
+			'' something else.  User is always responsible for handling the stack
+			'' registers.
+			'' 
 			ln += " : ""cc"", ""memory"""
 
 			select case( fbGetCpuFamily( ) )
@@ -3567,12 +3603,12 @@ private sub _emitAsmLine( byval asmtokenhead as ASTASMTOK ptr )
 						'' throw an error if you declare that it is clobbered, so we don't do
 						'' that. GCC 5 has rewritten PIC register handling and can now save and
 						'' restore ebx.
-						ln += ", ""eax"", ""ecx"", ""edx"", ""esp"", ""edi"", ""esi"""
+						ln += ", ""eax"", ""ecx"", ""edx"", ""edi"", ""esi"""
 					else
-						ln += ", ""eax"", ""ebx"", ""ecx"", ""edx"", ""esp"", ""edi"", ""esi"""
+						ln += ", ""eax"", ""ebx"", ""ecx"", ""edx"", ""edi"", ""esi"""
 					end if
 				else
-					ln += ", ""rax"", ""rbx"", ""rcx"", ""rdx"", ""rsp"", ""rdi"", ""rsi"""
+					ln += ", ""rax"", ""rbx"", ""rcx"", ""rdx"", ""rdi"", ""rsi"""
 					ln += ", ""r8"", ""r9"", ""r10"", ""r11"", ""r12"", ""r13"", ""r14"", ""r15"""
 				end if
 
@@ -3784,7 +3820,14 @@ private sub _emitVarIniScopeEnd( )
 	'' Trim separator at the end, to make the output look a bit more clean
 	'' (this isn't needed though, since the extra comma is allowed in C)
 	if( right( ctx.varini, 2 ) = ", " ) then
-		ctx.varini = left( ctx.varini, len( ctx.varini ) - 2 )
+		'' fbc doesn't optimize this very well and on long strings it becomes expensive
+		'' it's built in to the run-time, so revert to normal expression
+		'' if we don't have fb_leftself defined yet.
+		#ifndef fb_leftself
+			ctx.varini = left( ctx.varini, len( ctx.varini ) - 2 )
+		#else
+			fb_leftself( ctx.varini, len( ctx.varini ) - 2 ) 
+		#endif		''     
 	end if
 
 	ctx.varini += " }"
@@ -3802,7 +3845,12 @@ private sub _emitFbctinfBegin( )
 	'' section attribute - This global must be put into a custom .fbctinf
 	''                     section, as done by the ASM backend.
 	ctx.fbctinf = "static const char "
-	ctx.fbctinf += "__attribute__((used, section(""." + FB_INFOSEC_NAME + """))) "
+	if (fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_DARWIN) then
+		'' Must specify a segment name (can use any name)
+		ctx.fbctinf += "__attribute__((used, section(""__DATA," + FB_INFOSEC_NAME + """))) "
+	else
+		ctx.fbctinf += "__attribute__((used, section(""." + FB_INFOSEC_NAME + """))) "
+	end if
 	ctx.fbctinf += "__fbctinf[] = """
 end sub
 
