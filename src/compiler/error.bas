@@ -88,7 +88,8 @@ declare function hMakeParamDesc _
 		( /'FB_WARNINGMSG_ARGCNTMISMATCH            '/ 0, @"Argument count mismatch" ), _
 		( /'FB_WARNINGMSG_SUFFIXIGNORED             '/ 1, @"Suffix ignored" ), _
 		( /'FB_WARNINGMSG_FORENDTOOBIG              '/ 1, @"FOR counter variable is unable to exceed limit value" ), _
-		( /'FB_WARNINGMSG_CMDLINEIGNORED            '/ 0, @"#cmdline ignored" ) _
+		( /'FB_WARNINGMSG_CMDLINEIGNORED            '/ 0, @"#cmdline ignored" ), _
+		( /'FB_WARNINGMSG_RESERVEDGLOBALSYMBOL      '/ 1, @"Use of reserved global or backend symbol" ) _
 	}
 
 	dim shared errorMsgs( 1 to FB_ERRMSGS-1 ) as const zstring ptr => _
@@ -419,7 +420,8 @@ declare function hMakeParamDesc _
 		 /'FB_ERRMSG_INCOMPATIBLEREFINIT                '/ @"Incompatible reference initializer", _
 		 /'FB_ERRMSG_ARRAYOFREFS                        '/ @"Array of references - not supported yet", _
 		 /'FB_ERRMSG_INVALIDCASERANGE                   '/ @"Invalid CASE range, start value is greater than the end value", _
-		 /'FB_ERRMSG_BYREFFIXSTR                        '/ @"Fixed-length string combined with BYREF (not supported)" _
+		 /'FB_ERRMSG_BYREFFIXSTR                        '/ @"Fixed-length string combined with BYREF (not supported)", _
+		 /'FB_ERRMSG_ILLEGALUSEOFRESERVEDSYMBOL         '/ @"Illegal use of reserved symbol" _
 	}
 
 
@@ -706,6 +708,10 @@ sub errReportWarnEx _
 		exit sub
 	end if
 
+	if( fbPdCheckIsSet( FB_PDCHECK_ERROR ) ) then
+		errctx.cnt += 1
+	end if
+
 	if( errctx.inited > 0 ) then
 		msgex = hMakeParamDesc( msgex )
 	end if
@@ -723,6 +729,10 @@ sub errReportWarnEx _
 		print "(" & linenum & ")";
 	else
 		print "()";
+	end if
+
+	if( fbPdCheckIsSet( FB_PDCHECK_ERROR ) ) then
+		print " error";
 	end if
 
 	print " warning " & msgnum & "(" & warningMsgs(msgnum).level & "): ";

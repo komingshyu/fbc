@@ -92,14 +92,15 @@ private sub pragmaPop( byval pragmaIdx as LEXPP_PRAGMAOPT_ENUM, byref value as l
 end sub
 
 '':::::
-'' Pragma           =   PRAGMA RESERVE ( '(' ASM? ','? SHARED? ')' )? symbol
+'' Pragma           =   PRAGMA RESERVE ( '(' (ASM|EXTERN)?  ')' )? symbol
 ''
 private sub pragmaReserve( )
 	dim as FBSYMCHAIN ptr chain_ = any
 	dim as FBSYMBOL ptr base_parent = any, sym = any
-	dim as FB_SYMBATTRIB attrib = FB_SYMBATTRIB_NONE
+	'' dim as FB_SYMBATTRIB attrib = FB_SYMBATTRIB_NONE
 	dim as zstring ptr id = any
-	dim as integer isAsm = FALSE
+	dim as integer haveAsm = FALSE
+	dim as integer haveExtern = FALSE
 
 	'' preserve under -pp
 	if( env.ppfile_num > 0 ) then
@@ -118,15 +119,36 @@ private sub pragmaReserve( )
 
 		do
 			select case lexGetToken( )
-			case FB_TK_SHARED, FB_TK_ASM
+			case FB_TK_ASM, FB_TK_EXTERN
+				if( parser.scope > FB_MAINSCOPE ) then
+					if( fbIsModLevel( ) = FALSE ) then
+						errReportEx( FB_ERRMSG_ILLEGALINSIDEASUB, lexGetText() )
+					else
+						errReportEx( FB_ERRMSG_ILLEGALINSIDEASCOPE, lexGetText() )
+					end if
+					'' error recovery: skip line
+					hSkipUntil( FB_TK_EOL )
+					exit sub
+				end if
+
+				'' multiple use of ASM/EXTERN is invalid
+				if( ((lexGetToken() = FB_TK_ASM) and (haveAsm = TRUE)) _
+					or ((lexGetToken() = FB_TK_EXTERN) and (haveExtern = TRUE)) ) then
+
+					errReportEx( FB_ERRMSG_SYNTAXERROR, lexGetText( ) )
+					'' error recovery: skip line
+					hSkipUntil( FB_TK_EOL )
+					exit sub
+				end if
+
 				select case lexGetToken( )
-				case FB_TK_SHARED
-					attrib or= FB_SYMBATTRIB_SHARED
 				case FB_TK_ASM
-					isASM = TRUE
+					haveAsm    = TRUE
+				case FB_TK_EXTERN
+					haveExtern = TRUE
 				end select
-				
-				'' SHARED|ASM
+
+				'' ASM|EXTERN
 				lexSkipToken( LEXCHECK_POST_SUFFIX )
 
 			case CHAR_COMMA
@@ -170,7 +192,7 @@ private sub pragmaReserve( )
 		lexPPOnlyEmitToken( )
 	end if
 
-	if( isASM = TRUE ) then
+	if( haveAsm = TRUE ) then
 		if( parserInlineAsmAddKeyword( id ) = FALSE ) then
 			errReportEx( FB_ERRMSG_DUPDEFINITION, id )
 			'' error recovery: skip line
@@ -179,22 +201,34 @@ private sub pragmaReserve( )
 		end if
 	end if
 
-	if( (isASM = FALSE) or (attrib <> FB_SYMBATTRIB_NONE) ) then
-		sym = symbNewSymbol( FB_SYMBOPT_DOHASH, _
-			NULL, _
-			NULL, NULL, _
-			FB_SYMBCLASS_RESERVED, _
-			id, NULL, _
-			FB_DATATYPE_INVALID, NULL, _
-			attrib, FB_PROCATTRIB_NONE )
-
-		if( sym = NULL ) then
+	if( haveExtern = TRUE ) then
+		if( parserGlobalAsmAddKeyword( id ) = FALSE ) then
 			errReportEx( FB_ERRMSG_DUPDEFINITION, id )
 			'' error recovery: skip line
 			hSkipUntil( FB_TK_EOL )
 			exit sub
 		end if
+	end if
 
+	if( (haveAsm = TRUE) or (haveExtern = TRUE) ) then
+		'' symbol
+		lexSkipToken( LEXCHECK_POST_SUFFIX )
+		exit sub
+	end if
+
+	sym = symbNewSymbol( FB_SYMBOPT_DOHASH, _
+		NULL, _
+		symbGetCurrentSymTb( ), symbGetCurrentHashTb( ), _
+		FB_SYMBCLASS_RESERVED, _
+		id, NULL, _
+		FB_DATATYPE_INVALID, NULL, _
+		FB_SYMBATTRIB_LOCAL, FB_PROCATTRIB_NONE )
+
+	if( sym = NULL ) then
+		errReportEx( FB_ERRMSG_DUPDEFINITION, id )
+		'' error recovery: skip line
+		hSkipUntil( FB_TK_EOL )
+		exit sub
 	end if
 
 	'' symbol

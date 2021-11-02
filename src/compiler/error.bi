@@ -331,6 +331,7 @@ enum FB_ERRMSG
 	FB_ERRMSG_ARRAYOFREFS
 	FB_ERRMSG_INVALIDCASERANGE
 	FB_ERRMSG_BYREFFIXSTR
+	FB_ERRMSG_ILLEGALUSEOFRESERVEDSYMBOL
 
 	FB_ERRMSGS
 end enum
@@ -382,6 +383,7 @@ enum FB_WARNINGMSG
 	FB_WARNINGMSG_SUFFIXIGNORED
 	FB_WARNINGMSG_FORENDTOOBIG
 	FB_WARNINGMSG_CMDLINEIGNORED
+	FB_WARNINGMSG_RESERVEDGLOBALSYMBOL
 
 	FB_WARNINGMSGS
 end enum
@@ -404,6 +406,7 @@ declare sub errInit( )
 declare sub errEnd( )
 declare sub errHideFurtherErrors( )
 declare function errGetCount( ) as integer
+
 declare sub errPushParamLocation _
 	( _
 		byval proc as FBSYMBOL_ ptr, _
