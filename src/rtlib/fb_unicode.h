@@ -85,13 +85,11 @@ typedef uint8_t  UTF_8;
 
 #ifdef HOST_ANDROID
 #ifndef DISABLE_WCHAR
-/* If you want to target Android 5.0+ (or 2.3+ and don't care that half the wstring functions are
-   broken you can use this*/
-
-/* Note: old NDKs defined wchar_t as 8 bit in APIs before 9 (Android 2.3), and 32 bit in API 9 and later,
-  but now NDKs define it as 32 bit everywhere. https://code.google.com/p/android/issues/detail?id=57267*/
-	/* The following were not added until Android 5.0 */
+/* Android 2.3 added partial wchar_t support to libc (before that, it was 8-bit), but many
+   wchar_t functions are missing or buggy. That improved in Android 5.0, but even then various
+   functions such as wprintf(), wscanf() are still missing. */
 #ifndef wcstoull
+	/* Not added until Android 5.0 */
 #	define wcstoull wcstoul
 #endif
 /* Early NDKs (before Android 2.3?) declared mbstowcs and wcstombs in <stdlib.h>, but didn't actually provide an
