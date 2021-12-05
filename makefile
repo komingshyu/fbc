@@ -150,7 +150,7 @@
 FBC := fbc
 CFLAGS := -Wfatal-errors -O2
 # Avoid gcc exception handling bloat
-CFLAGS += -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables
+CFLAGS += -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables --sysroot $(SYSROOT)
 FBFLAGS := -maxerr 1
 AS = $(TARGET_PREFIX)as
 AR = $(TARGET_PREFIX)ar
@@ -494,7 +494,7 @@ ifeq ($(TARGET_OS),android)
   # Android has very limited locale support in the NDK -- only the C locale is supported.
   # Locale information is available from Java. The CrystaX alternative NDK has locale support.
 
-  ALLCFLAGS += -DDISABLE_NCURSES -DDISABLE_X11 -DDISABLE_FFI -DDISABLE_LANGINFO -DDISABLE_WCHAR
+  ALLCFLAGS += -DDISABLE_NCURSES -DDISABLE_X11 -DDISABLE_FFI -DDISABLE_LANGINFO #-DDISABLE_WCHAR
 endif
 
 ifeq ($(TARGET_OS),xbox)
