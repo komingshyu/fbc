@@ -517,9 +517,9 @@ dos)
 	}
 
 	djver=205
-	gccver=710
-	djgppgccversiondir=7
-	bnuver=229
+	gccver=930
+	djgppgccversiondir=9
+	bnuver=230
 	gdbver=771
 	djpkg=current
 
@@ -595,6 +595,7 @@ win32-mingworg)
 	download_extract_mingw gmp-5.1.2-1-mingw32-dll.tar.lzma
 	download_extract_mingw mpc-1.0.1-2-mingw32-dll.tar.lzma
 	download_extract_mingw mpfr-3.1.2-2-mingw32-dll.tar.lzma
+	download_extract_mingw libiconv-1.14-3-mingw32-dll.tar.lzma
 
 	# Add ddraw.h and dinput.h for FB's gfxlib2
 
@@ -717,6 +718,7 @@ EOF
 	mkdir -p fbc/bin/dos
 	cp bin/ar.exe bin/as.exe bin/gdb.exe bin/gprof.exe bin/ld.exe fbc/bin/dos/
 	cp bin/dxe3gen.exe fbc/bin/dos/
+	cp lib/dxe.ld fbc/lib/dos/dxe.ld 
 	cp lib/crt0.o lib/gcrt0.o lib/libdbg.a lib/libemu.a lib/libm.a fbc/lib/dos/
 	cp lib/libstdcxx.a fbc/lib/dos/libstdcx.a
 	cp lib/libsupcxx.a fbc/lib/dos/libsupcx.a
@@ -965,6 +967,7 @@ windowsbuild() {
 		win32-mingworg)
 			cp bin/gdb.exe              fbc/bin/win32
 			cp bin/libgcc_s_dw2-1.dll   fbc/bin/win32
+			cp bin/libiconv-2.dll       fbc/bin/win32
 			cp bin/zlib1.dll            fbc/bin/win32
 			;;
 		win64)

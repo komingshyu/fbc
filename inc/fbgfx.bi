@@ -4,7 +4,15 @@
 #ifndef __fbgfx_bi__
 #define __fbgfx_bi__
 
-#inclib "fbgfx"
+'' #inclib "fbgfx?" is handled as a special case by the compiler
+'' and will be replaced one of the following libraries later.
+''   fbgfx
+''   fbgfxmt      thread-safe
+''   fbgfxpic     position independent code
+''   fbgfxmtpic   thread-safe & PIC
+
+#inclib "fbgfx?"
+
 #ifdef __FB_WIN32__
 	#inclib "gdi32"
 	#inclib "winmm"
@@ -54,44 +62,68 @@ namespace FB
 	'' Constants accepted by ScreenControl
 	''
 	'' Getters:
-	const as integer GET_WINDOW_POS				= 0		, _
-					 GET_WINDOW_TITLE			= 1		, _
-					 GET_WINDOW_HANDLE			= 2		, _
-					 GET_DESKTOP_SIZE			= 3		, _
-					 GET_SCREEN_SIZE			= 4		, _
-					 GET_SCREEN_DEPTH			= 5		, _
-					 GET_SCREEN_BPP				= 6		, _
-					 GET_SCREEN_PITCH			= 7		, _
-					 GET_SCREEN_REFRESH			= 8		, _
-					 GET_DRIVER_NAME			= 9		, _
-					 GET_TRANSPARENT_COLOR		= 10	, _
-					 GET_VIEWPORT				= 11	, _
-					 GET_PEN_POS				= 12	, _
-					 GET_COLOR					= 13	, _
-					 GET_ALPHA_PRIMITIVES		= 14	, _
-					 GET_GL_EXTENSIONS			= 15	, _
-					 GET_HIGH_PRIORITY			= 16
+	const as integer _
+		GET_WINDOW_POS              = 0, _
+		GET_WINDOW_TITLE            = 1, _
+		GET_WINDOW_HANDLE           = 2, _
+		GET_DESKTOP_SIZE            = 3, _
+		GET_SCREEN_SIZE             = 4, _
+		GET_SCREEN_DEPTH            = 5, _
+		GET_SCREEN_BPP              = 6, _
+		GET_SCREEN_PITCH            = 7, _
+		GET_SCREEN_REFRESH          = 8, _
+		GET_DRIVER_NAME             = 9, _
+		GET_TRANSPARENT_COLOR       = 10, _
+		GET_VIEWPORT                = 11, _
+		GET_PEN_POS                 = 12, _
+		GET_COLOR                   = 13, _
+		GET_ALPHA_PRIMITIVES        = 14, _
+		GET_GL_EXTENSIONS           = 15, _
+		GET_HIGH_PRIORITY           = 16, _
+		GET_SCANLINE_SIZE           = 17, _
+		_
+		GET_GL_COLOR_BITS           = 37, _
+		GET_GL_COLOR_RED_BITS       = 38, _
+		GET_GL_COLOR_GREEN_BITS     = 39, _
+		GET_GL_COLOR_BLUE_BITS      = 40, _
+		GET_GL_COLOR_ALPHA_BITS     = 41, _
+		GET_GL_DEPTH_BITS           = 42, _
+		GET_GL_STENCIL_BITS         = 43, _
+		GET_GL_ACCUM_BITS           = 44, _
+		GET_GL_ACCUM_RED_BITS       = 45, _
+		GET_GL_ACCUM_GREEN_BITS     = 46, _
+		GET_GL_ACCUM_BLUE_BITS      = 47, _
+		GET_GL_ACCUM_ALPHA_BITS     = 48, _
+		GET_GL_NUM_SAMPLES          = 49, _
+		_
+		GET_GL_2D_MODE              = 82, _
+		GET_GL_SCALE                = 83
+
 	'' Setters:
-	const as integer SET_WINDOW_POS				= 100	, _
-					 SET_WINDOW_TITLE			= 101	, _
-					 SET_PEN_POS				= 102	, _
-					 SET_DRIVER_NAME			= 103	, _
-					 SET_ALPHA_PRIMITIVES		= 104	, _
-					 SET_GL_COLOR_BITS			= 105	, _
-					 SET_GL_COLOR_RED_BITS		= 106	, _
-					 SET_GL_COLOR_GREEN_BITS	= 107	, _
-					 SET_GL_COLOR_BLUE_BITS		= 108	, _
-					 SET_GL_COLOR_ALPHA_BITS	= 109	, _
-					 SET_GL_DEPTH_BITS			= 110	, _
-					 SET_GL_STENCIL_BITS		= 111	, _
-					 SET_GL_ACCUM_BITS			= 112	, _
-					 SET_GL_ACCUM_RED_BITS		= 113	, _
-					 SET_GL_ACCUM_GREEN_BITS	= 114	, _
-					 SET_GL_ACCUM_BLUE_BITS		= 115	, _
-					 SET_GL_ACCUM_ALPHA_BITS	= 116	, _
-					 SET_GL_NUM_SAMPLES			= 117	, _
-					 SET_GL_2D_MODE				= 150	, _
-					 SET_GL_SCALE				= 151
+	const as integer _
+		SET_WINDOW_POS              = 100, _
+		SET_WINDOW_TITLE            = 101, _
+		SET_PEN_POS                 = 102, _
+		SET_DRIVER_NAME             = 103, _
+		SET_ALPHA_PRIMITIVES        = 104, _
+		_
+		SET_GL_COLOR_BITS           = 105, _
+		SET_GL_COLOR_RED_BITS       = 106, _
+		SET_GL_COLOR_GREEN_BITS     = 107, _
+		SET_GL_COLOR_BLUE_BITS      = 108, _
+		SET_GL_COLOR_ALPHA_BITS     = 109, _
+		SET_GL_DEPTH_BITS           = 110, _
+		SET_GL_STENCIL_BITS         = 111, _
+		SET_GL_ACCUM_BITS           = 112, _
+		SET_GL_ACCUM_RED_BITS       = 113, _
+		SET_GL_ACCUM_GREEN_BITS     = 114, _
+		SET_GL_ACCUM_BLUE_BITS      = 115, _
+		SET_GL_ACCUM_ALPHA_BITS     = 116, _
+		SET_GL_NUM_SAMPLES          = 117, _
+		_
+		SET_GL_2D_MODE              = 150, _
+		SET_GL_SCALE                = 151
+
 	'' Commands:
 	const as integer POLL_EVENTS				= 200
 	
@@ -195,107 +227,108 @@ namespace FB
 	'' Keyboard scancodes returned by MULTIKEY
 	''
 	enum
-        SC_ESCAPE     = &h01
-        SC_1
-        SC_2
-        SC_3
-        SC_4
-        SC_5
-        SC_6
-        SC_7
-        SC_8
-        SC_9
-        SC_0
-        SC_MINUS
-        SC_EQUALS
-        SC_BACKSPACE
-        SC_TAB
-        SC_Q
-        SC_W
-        SC_E
-        SC_R
-        SC_T
-        SC_Y
-        SC_U
-        SC_I
-        SC_O
-        SC_P
-        SC_LEFTBRACKET
-        SC_RIGHTBRACKET
-        SC_ENTER
-        SC_CONTROL
-        SC_A
-        SC_S
-        SC_D
-        SC_F
-        SC_G
-        SC_H
-        SC_J
-        SC_K
-        SC_L
-        SC_SEMICOLON
-        SC_QUOTE
-        SC_TILDE
-        SC_LSHIFT
-        SC_BACKSLASH
-        SC_Z
-        SC_X
-        SC_C
-        SC_V
-        SC_B
-        SC_N
-        SC_M
-        SC_COMMA
-        SC_PERIOD
-        SC_SLASH
-        SC_RSHIFT
-        SC_MULTIPLY
-        SC_ALT
-        SC_SPACE
-        SC_CAPSLOCK
-        SC_F1
-        SC_F2
-        SC_F3
-        SC_F4
-        SC_F5
-        SC_F6
-        SC_F7
-        SC_F8
-        SC_F9
-        SC_F10
-        SC_NUMLOCK
-        SC_SCROLLLOCK
-        SC_HOME
-        SC_UP         
-        SC_PAGEUP
-        '' &h4A unused (?)
-        SC_LEFT = &h4B
-        SC_CLEAR
-        SC_RIGHT
-        SC_PLUS
-        SC_END
-        SC_DOWN
-        SC_PAGEDOWN
-        SC_INSERT
-        SC_DELETE
-        '' &h54
-        '' &h55
-        '' &h56
-        SC_F11        = &h57
-        SC_F12
-        '' &h59
-        '' &h5A
-        SC_LWIN       = &h5B
-        SC_RWIN
-        SC_MENU
-        '' &h5E
-        '' &h5F
-        '' &h60
-        '' &h61
-        '' &h62
-        '' &h63
-        SC_ALTGR      = &h64
-    end enum
+		SC_ESCAPE     = &h01
+		SC_1
+		SC_2
+		SC_3
+		SC_4
+		SC_5
+		SC_6
+		SC_7
+		SC_8
+		SC_9
+		SC_0
+		SC_MINUS
+		SC_EQUALS
+		SC_BACKSPACE
+		SC_TAB
+		SC_Q
+		SC_W
+		SC_E
+		SC_R
+		SC_T
+		SC_Y
+		SC_U
+		SC_I
+		SC_O
+		SC_P
+		SC_LEFTBRACKET
+		SC_RIGHTBRACKET
+		SC_ENTER
+		SC_CONTROL
+		SC_A
+		SC_S
+		SC_D
+		SC_F
+		SC_G
+		SC_H
+		SC_J
+		SC_K
+		SC_L
+		SC_SEMICOLON
+		SC_QUOTE
+		SC_TILDE
+		SC_LSHIFT
+		SC_BACKSLASH
+		SC_Z
+		SC_X
+		SC_C
+		SC_V
+		SC_B
+		SC_N
+		SC_M
+		SC_COMMA
+		SC_PERIOD
+		SC_SLASH
+		SC_RSHIFT
+		SC_MULTIPLY
+		SC_ALT
+		SC_SPACE
+		SC_CAPSLOCK
+		SC_F1
+		SC_F2
+		SC_F3
+		SC_F4
+		SC_F5
+		SC_F6
+		SC_F7
+		SC_F8
+		SC_F9
+		SC_F10
+		SC_NUMLOCK
+		SC_SCROLLLOCK
+		SC_HOME
+		SC_UP
+		SC_PAGEUP
+		'' &h4A unused (?)
+		SC_LEFT       = &h4B
+		SC_CLEAR      = &h4C
+		SC_CENTER     = &h4C
+		SC_RIGHT
+		SC_PLUS
+		SC_END
+		SC_DOWN
+		SC_PAGEDOWN
+		SC_INSERT
+		SC_DELETE
+		'' &h54
+		'' &h55
+		'' &h56
+		SC_F11        = &h57
+		SC_F12
+		'' &h59
+		'' &h5A
+		SC_LWIN       = &h5B
+		SC_RWIN
+		SC_MENU
+		'' &h5E
+		'' &h5F
+		'' &h60
+		'' &h61
+		'' &h62
+		'' &h63
+		SC_ALTGR      = &h64
+	end enum
 
 # if __FB_LANG__ = "fb"
 end namespace

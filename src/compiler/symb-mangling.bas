@@ -106,7 +106,7 @@ function symbGetDBGName( byval sym as FBSYMBOL ptr ) as zstring ptr
 		select case as const symbGetClass( sym )
 		'' but UDT's, they shouldn't include any mangling at all..
 		case FB_SYMBCLASS_ENUM, FB_SYMBCLASS_STRUCT, _
-			 FB_SYMBCLASS_CLASS, FB_SYMBCLASS_NAMESPACE
+		     FB_SYMBCLASS_CLASS, FB_SYMBCLASS_NAMESPACE
 
 			'' check if an alias wasn't given
 			dim as zstring ptr res = sym->id.alias
@@ -467,7 +467,7 @@ sub symbMangleType _
 		mangled += "R"
 
 		symbMangleType( mangled, typeUnsetIsRef( dtype ), subtype, _
-			options or FB_MANGLEOPT_HASREF or FB_MANGLEOPT_KEEPTOPCONST)
+		                options or FB_MANGLEOPT_HASREF or FB_MANGLEOPT_KEEPTOPCONST)
 
 		hAbbrevAdd( dtype, subtype )
 		exit sub
@@ -475,24 +475,23 @@ sub symbMangleType _
 
 	'' const?
 	if( typeIsConst( dtype ) ) then
-
-		'' The type has some CONST bits. For C++ mangling we remove the
-		'' toplevel one and recursively mangle the rest of the type.
+		'' If mangling a pointed-to type of a reference or pointer,
+		'' the CONST is included in the mangling (FB_MANGLEOPT_KEEPTOPCONST).
 		''
-		'' It could be a BYVAL x as CONST foo type. In this case the
-		'' CONST is not encoded in the C++ mangling, because it makes no
-		'' difference. It's not allowed to have overloads that differ
-		'' only in BYVAL CONSTness. The CONST only matters if it's a
-		'' pointer or BYREF type.
+		'' But, if the CONST is at toplevel, it's not included,
+		'' because "byval x as const type" is effectively the same as a "byval x as type".
+		'' C++ and FB do not allow overloads that differ only in BYVAL CONSTness.
 
 		if( (options and FB_MANGLEOPT_KEEPTOPCONST) <> 0 ) then
 			mangled += "K"
 		end if
 
-		symbMangleType( mangled, typeUnsetIsConst( dtype ), subtype, _
-			options and not FB_MANGLEOPT_KEEPTOPCONST )
+		symbMangleType( mangled, typeUnsetIsConst( dtype ), subtype, options )
 
-		hAbbrevAdd( dtype, subtype )
+		'' Skipped toplevel CONSTs are not considered for abbreviation.
+		if( (options and FB_MANGLEOPT_KEEPTOPCONST) <> 0 ) then
+			hAbbrevAdd( dtype, subtype )
+		end if
 		exit sub
 	end if
 
@@ -501,7 +500,7 @@ sub symbMangleType _
 		mangled += "P"
 
 		symbMangleType( mangled, typeDeref( dtype ), subtype, _
-			options or FB_MANGLEOPT_HASPTR or FB_MANGLEOPT_KEEPTOPCONST )
+		                options or FB_MANGLEOPT_HASPTR or FB_MANGLEOPT_KEEPTOPCONST )
 
 		hAbbrevAdd( dtype, subtype )
 		exit sub
@@ -551,10 +550,14 @@ sub symbMangleType _
 		if( ns = @symbGetGlobalNamespc( ) ) then
 			hMangleUdtId( mangled, subtype )
 		else
-			mangled += "N"
-			symbMangleType( mangled, symbGetFullType( ns ), ns )
+			if( (options and FB_MANGLEOPT_NESTED) = 0 ) then
+				mangled += "N"
+			end if
+			symbMangleType( mangled, symbGetFullType( ns ), ns, FB_MANGLEOPT_NESTED )
 			hMangleUdtId( mangled, subtype )
-			mangled += "E"
+			if( (options and FB_MANGLEOPT_NESTED) = 0 ) then
+				mangled += "E"
+			end if
 		end if
 
 		hAbbrevAdd( dtype, subtype )
@@ -726,7 +729,7 @@ private sub hMangleVariable( byval sym as FBSYMBOL ptr )
 	'' local optimization for 'id' allocation - it's always initialized by logic below
 	static as string id
 
-	'' !!!TODO!!! should varcounter  reset between modules and on restarts with fbRestartableStaticVariable()?
+	'' !!!TODO!!! should varcounter reset between modules and on restarts with fbRestartableStaticVariable()?
 	static as integer varcounter
 	dim as string mangled
 	dim as zstring ptr p = any
@@ -744,6 +747,7 @@ private sub hMangleVariable( byval sym as FBSYMBOL ptr )
 	if( sym->attrib and (FB_SYMBATTRIB_PUBLIC or FB_SYMBATTRIB_EXTERN or _
 	                     FB_SYMBATTRIB_SHARED or FB_SYMBATTRIB_COMMON or _
 	                     FB_SYMBATTRIB_STATIC) ) then
+
 		'' LLVM: @ prefix for global symbols
 		if( env.clopt.backend = FB_BACKEND_LLVM ) then
 			mangled += "@"
@@ -1221,14 +1225,19 @@ private sub hMangleProc( byval sym as FBSYMBOL ptr )
 	docpp = hDoCppMangling( sym )
 
 	'' Should the @N win32 stdcall suffix be added for this procedure?
-	'' * only for stdcall, not stdcallms/cdecl/pascal/thiscall
+	'' * only for stdcall/fastcall, not stdcallms/cdecl/pascal/thiscall
 	''   (that also makes it win32-only)
+	'' *
 	'' * only on x86, since these calling conventions matter there only
 	'' * only for ASM/LLVM backends, but not for the C backend, because gcc
 	''   will do it already
-	add_stdcall_suffix = (sym->proc.mode = FB_FUNCMODE_STDCALL) and _
-				(fbGetCpuFamily( ) = FB_CPUFAMILY_X86) and _
-				(env.clopt.backend <> FB_BACKEND_GCC)
+	add_stdcall_suffix = ((sym->proc.mode = FB_FUNCMODE_STDCALL) or _
+	                     ((sym->proc.mode = FB_FUNCMODE_FASTCALL) and _
+	                     ((env.clopt.target = FB_COMPTARGET_WIN32) or _
+	                      (env.clopt.target = FB_COMPTARGET_CYGWIN) or _
+	                      (env.clopt.target = FB_COMPTARGET_XBOX)))) and _
+	                     (fbGetCpuFamily( ) = FB_CPUFAMILY_X86) and _
+	                     (env.clopt.backend <> FB_BACKEND_GCC)
 
 	'' LLVM: @ prefix for global symbols
 	if( env.clopt.backend = FB_BACKEND_LLVM ) then
@@ -1265,7 +1274,16 @@ private sub hMangleProc( byval sym as FBSYMBOL ptr )
 
 	'' Win32 underscore prefix
 	if( hAddUnderscore( ) ) then
-		mangled += "_"
+		if( sym->proc.mode = FB_FUNCMODE_FASTCALL ) then
+			select case( env.clopt.target )
+			case FB_COMPTARGET_WIN32, FB_COMPTARGET_CYGWIN, FB_COMPTARGET_XBOX
+				mangled += "@"
+			case else
+				mangled += "_"
+			end select
+		else
+			mangled += "_"
+		end if
 	end if
 
 	'' C++ prefix

@@ -102,7 +102,9 @@
 #   FBMANIFEST    bindist: The manifest file name without path or extension
 #   FBVERSION     bindist/gitdist: FB version number
 #   DISABLE_DOCS  bindist: Don't package readme/changelog/manpage/examples
-#
+#   BUILD_PREFIX     automatically set depending on the target but can override for special builds where the
+#                    build tools have different file naming than the target to build (i.e. cross compiling)
+#   DISABLE_GAS64_DEBUG    use "-d DISABLE_GAS64_DEBUG" (see below)
 # compiler source code configuration (FBCFLAGS, FBLFLAGS):
 #   -d ENABLE_STANDALONE     build for a self-contained installation
 #   -d ENABLE_SUFFIX=-0.24   assume FB's lib dir uses the given suffix (non-standalone only)
@@ -110,12 +112,19 @@
 #   -d ENABLE_LIB64          use prefix/lib64/ instead of prefix/lib/ for 64bit libs (non-standalone only)
 #   -d ENABLE_STRIPALL       configure fbc to pass down '--strip-all' to linker by default
 #   -d FBSHA1=some-sha-1     store 'some-sha-1' in the compiler for version information
+#   -d DISABLE_GAS64_DEBUG   disable gas64 debugging comments in asm files even if __FB_DEBUG__ is defined (-g)
+#
+# internal makefile configuration (but can override):
+#   libsubdir       override the library directory - default is set depending on TARGET
+#   objsubdir       override object file directory - default is set depending on TARGET
+#   fbcobjdir       override compiler object directory - default is set depending on TARGET
 #
 # fbrt source code configuration (FBRTCFLAGS, FBRTLFLAGS)
 #
 # rtlib/gfxlib2 source code configuration (CFLAGS):
 #   -DDISABLE_X11    build without X11 headers (disables X11 gfx driver)
-#   -DDISABLE_GPM    build without gpm.h (disables Linux GetMouse)
+#   -DDISABLE_GPM    build without gpm.h (disables GetMouse in the Linux terminal (TERM=linux),
+#                    although the TERM=xterm variant keeps working)
 #   -DDISABLE_FFI    build without ffi.h (disables ThreadCall)
 #   -DDISABLE_OPENGL build without OpenGL headers (disables OpenGL gfx drivers)
 #   -DDISABLE_FBDEV  build without Linux framebuffer device headers (disables Linux fbdev gfx driver)
@@ -148,9 +157,9 @@ CFLAGS := -Wfatal-errors -O2
 # Avoid gcc exception handling bloat
 CFLAGS += -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables
 FBFLAGS := -maxerr 1
-AS = $(TARGET_PREFIX)as
-AR = $(TARGET_PREFIX)ar
-CC = $(TARGET_PREFIX)gcc
+AS = $(BUILD_PREFIX)as
+AR = $(BUILD_PREFIX)ar
+CC = $(BUILD_PREFIX)gcc
 prefix := /usr/local
 
 # Determine the makefile's directory, this may be a relative path when
@@ -180,7 +189,9 @@ include $(rootdir)version.mk
 ifdef TARGET
   # Parse TARGET
   triplet := $(subst -, ,$(TARGET))
-  TARGET_PREFIX := $(TARGET)-
+  ifeq ($(BUILD_PREFIX),)
+  BUILD_PREFIX := $(TARGET)-
+  endif
 
   ifndef TARGET_OS
     ifneq ($(filter cygwin%,$(triplet)),)
@@ -396,7 +407,13 @@ endif
 #
 # Determine directory layout for .o files and final binaries.
 #
-libsubdir := $(FBTARGET)
+ifeq ($(libsubdir),)
+  libsubdir := $(FBTARGET)
+endif
+ifeq ($(objsubdir),)
+  objsubdir := $(libsubdir)
+endif
+
 ifdef ENABLE_STANDALONE
   # Traditional standalone layout: fbc.exe at toplevel, libs in lib/<fbtarget>/,
   # includes in inc/
@@ -428,20 +445,22 @@ else
   prefixincdir   := $(prefix)/include/$(FBNAME)
   prefixlibdir   := $(prefix)/$(libdir)
 endif
+ifeq ($(fbcobjdir),)
 fbcobjdir           := src/compiler/obj/$(FBTARGET)
-libfbobjdir         := src/rtlib/obj/$(libsubdir)
-libfbpicobjdir      := src/rtlib/obj/$(libsubdir)/pic
-libfbmtobjdir       := src/rtlib/obj/$(libsubdir)/mt
-libfbmtpicobjdir    := src/rtlib/obj/$(libsubdir)/mt/pic
-libfbrtobjdir       := src/fbrt/obj/$(libsubdir)
-libfbrtpicobjdir    := src/fbrt/obj/$(libsubdir)/pic
-libfbrtmtobjdir     := src/fbrt/obj/$(libsubdir)/mt
-libfbrtmtpicobjdir  := src/fbrt/obj/$(libsubdir)/mt/pic
-libfbgfxobjdir      := src/gfxlib2/obj/$(libsubdir)
-libfbgfxpicobjdir   := src/gfxlib2/obj/$(libsubdir)/pic
-libfbgfxmtobjdir    := src/gfxlib2/obj/$(libsubdir)/mt
-libfbgfxmtpicobjdir := src/gfxlib2/obj/$(libsubdir)/mt/pic
-djgpplibcobjdir     := contrib/djgpp/libc/crt0/obj/$(libsubdir)
+endif
+libfbobjdir         := src/rtlib/obj/$(objsubdir)
+libfbpicobjdir      := src/rtlib/obj/$(objsubdir)/pic
+libfbmtobjdir       := src/rtlib/obj/$(objsubdir)/mt
+libfbmtpicobjdir    := src/rtlib/obj/$(objsubdir)/mt/pic
+libfbrtobjdir       := src/fbrt/obj/$(objsubdir)
+libfbrtpicobjdir    := src/fbrt/obj/$(objsubdir)/pic
+libfbrtmtobjdir     := src/fbrt/obj/$(objsubdir)/mt
+libfbrtmtpicobjdir  := src/fbrt/obj/$(objsubdir)/mt/pic
+libfbgfxobjdir      := src/gfxlib2/obj/$(objsubdir)
+libfbgfxpicobjdir   := src/gfxlib2/obj/$(objsubdir)/pic
+libfbgfxmtobjdir    := src/gfxlib2/obj/$(objsubdir)/mt
+libfbgfxmtpicobjdir := src/gfxlib2/obj/$(objsubdir)/mt/pic
+djgpplibcobjdir     := contrib/djgpp/libc/crt0/obj/$(objsubdir)
 
 # If cross-compiling, use -target
 ifdef TARGET
@@ -548,6 +567,9 @@ else
   ifneq ($(filter dos win32,$(TARGET_OS)),)
     ALLFBCFLAGS += -d ENABLE_STRIPALL
   endif
+endif
+ifdef DISABLE_GAS64_DEBUG
+  ALLFBCFLAGS += -d DISABLE_GAS64_DEBUG
 endif
 
 ALLFBCFLAGS += $(FBCFLAGS) $(FBFLAGS)
@@ -1030,6 +1052,9 @@ bindist:
 	mkdir -p $(FBPACKAGE)/bin/$(FBTARGET)
 	cp bin/$(FBTARGET)/* $(FBPACKAGE)/bin/$(FBTARGET)
 	cp lib/$(FBTARGET)/*.a lib/$(FBTARGET)/*.o lib/$(FBTARGET)/*.x $(packlib)
+	if [ -f lib/$(FBTARGET)/dxe.ld ]; then \
+		cp lib/$(FBTARGET)/dxe.ld $(packlib); \
+	fi
 	if [ -d bin/libexec ]; then \
 		cp -R bin/libexec $(FBPACKAGE)/bin; \
 	fi
@@ -1293,6 +1318,7 @@ bootstrap-dist:
 	mkdir -p bootstrap/solaris-x86_64
 	mkdir -p bootstrap/linux-x86
 	mkdir -p bootstrap/linux-x86_64
+	mkdir -p bootstrap/cygwin-x86_64
 	mkdir -p bootstrap/win32
 	mkdir -p bootstrap/win64
 	mkdir -p bootstrap/linux-arm
@@ -1307,6 +1333,7 @@ bootstrap-dist:
 	./$(FBC_EXE) src/compiler/*.bas -m fbc -i inc -e -r -v -target solaris-x86_64      && mv src/compiler/*.c   bootstrap/solaris-x86_64
 	./$(FBC_EXE) src/compiler/*.bas -m fbc -i inc -e -r -v -target linux-x86           && mv src/compiler/*.asm bootstrap/linux-x86
 	./$(FBC_EXE) src/compiler/*.bas -m fbc -i inc -e -r -v -target linux-x86_64        && mv src/compiler/*.c   bootstrap/linux-x86_64
+	./$(FBC_EXE) src/compiler/*.bas -m fbc -i inc -e -r -v -target cygwin-x86_64       && mv src/compiler/*.c   bootstrap/cygwin-x86_64
 	./$(FBC_EXE) src/compiler/*.bas -m fbc -i inc -e -r -v -target win32               && mv src/compiler/*.asm bootstrap/win32
 	./$(FBC_EXE) src/compiler/*.bas -m fbc -i inc -e -r -v -target win64               && mv src/compiler/*.c   bootstrap/win64
 	./$(FBC_EXE) src/compiler/*.bas -m fbc -i inc -e -r -v -target linux-arm           && mv src/compiler/*.c   bootstrap/linux-arm
@@ -1324,6 +1351,7 @@ bootstrap-dist:
 	dos2unix bootstrap/solaris-x86_64/*
 	dos2unix bootstrap/linux-x86/*
 	dos2unix bootstrap/linux-x86_64/*
+	dos2unix bootstrap/cygwin-x86_64/*
 	dos2unix bootstrap/win32/*
 	dos2unix bootstrap/win64/*
 	dos2unix bootstrap/linux-arm/*

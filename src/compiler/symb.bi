@@ -53,6 +53,9 @@ enum FB_DATATYPE
 	FB_DATATYPE_XMMWORD
 end enum
 
+const FB_DATATYPE_FIRST_NUMERIC = FB_DATATYPE_BOOLEAN
+const FB_DATATYPE_LAST_NUMERIC = FB_DATATYPE_DOUBLE
+
 const FB_DATATYPES = (FB_DATATYPE_XMMWORD - FB_DATATYPE_VOID) + 1
 
 const FB_DT_TYPEMASK        = &b00000000000000000000000000011111 '' max 32 built-in dts
@@ -113,9 +116,10 @@ enum FB_SYMBCLASS
 	FB_SYMBCLASS_CLASS
 	FB_SYMBCLASS_FIELD
 	FB_SYMBCLASS_TYPEDEF
-	FB_SYMBCLASS_FWDREF                         '' forward definition
+	FB_SYMBCLASS_FWDREF                     '' forward definition
 	FB_SYMBCLASS_SCOPE
-	FB_SYMBCLASS_NSIMPORT                       '' namespace import (an USING)
+	FB_SYMBCLASS_RESERVED                   '' reserved symbol
+	FB_SYMBCLASS_NSIMPORT                   '' namespace import (an USING)
 end enum
 
 '' symbol state mask
@@ -189,6 +193,7 @@ enum FB_SYMBATTRIB
 	FB_SYMBATTRIB_VIS_PRIVATE      = &h00200000  '' UDT members only
 	FB_SYMBATTRIB_VIS_PROTECTED    = &h00400000  '' UDT members only
 	FB_SYMBATTRIB_INTERNAL         = &h00800000  '' default UDT members / vtable / rtti - affects name mangling
+	FB_SYMBATTRIB_ANONYMOUS        = &h01000000  '' anonymous / unnamed id
 end enum
 
 '' proc symbol attributes mask
@@ -224,7 +229,8 @@ enum FB_FUNCMODE
 	FB_FUNCMODE_STDCALL_MS                      '' ms/vb-style: don't include the @n suffix
 	FB_FUNCMODE_CDECL
 	FB_FUNCMODE_PASCAL
-	FB_FUNCMODE_THISCALL
+	FB_FUNCMODE_THISCALL                        '' x86 only
+	FB_FUNCMODE_FASTCALL                        '' x86 only
 
 	'' Symbolic constant to represent FBCALL, telling cProcCallingConv()
 	'' and the RTL procedure definitions to use env.target.fbcall which
@@ -251,8 +257,17 @@ end enum
 enum FB_SYMBLOOKUPOPT
 	FB_SYMBLOOKUPOPT_NONE    = &h00000000
 
-	FB_SYMBLOOKUPOPT_PROPGET = &h00000001
-	FB_SYMBLOOKUPOPT_BOP_OVL = &h00000002
+	FB_SYMBLOOKUPOPT_PROPGET    = &h00000001  '' match property get and not property set
+	FB_SYMBLOOKUPOPT_BOP_OVL    = &h00000002  '' exact match at least one parameter
+
+	'' symbFindCastOvlProc(), hCheckCastOvl()
+	FB_SYMBLOOKUPOPT_EXPLICIT   = &h00000004  '' require explicit exact match
+
+	'' symbFindCastOvlProc(), symbFindCtorOvlProc()
+	'' symbFindClosestOvlProc(), hCheckOvlParam()
+	FB_SYMBLOOKUPOPT_NO_ERROR   = &h00000008  '' don't report errors, return to caller
+	FB_SYMBLOOKUPOPT_NO_CTOR    = &h00000010  '' don't find matching constructors
+	FB_SYMBLOOKUPOPT_NO_CAST    = &h00000020  '' don't find matching cast operators
 end enum
 
 ''
@@ -268,10 +283,11 @@ end enum
 
 ''
 enum FB_MANGLEOPT
-	FB_MANGLEOPT_NONE         = 0  '' no special options
-	FB_MANGLEOPT_KEEPTOPCONST = 1  '' keep the top-level const when mangling
-	FB_MANGLEOPT_HASPTR       = 2  '' mangled type has is a pointer type
-	FB_MANGLEOPT_HASREF       = 4  '' mangled type has is reference type
+	FB_MANGLEOPT_NONE         =   0  '' no special options
+	FB_MANGLEOPT_KEEPTOPCONST =   1  '' keep the top-level const when mangling
+	FB_MANGLEOPT_HASPTR       =   2  '' mangled type has is a pointer type
+	FB_MANGLEOPT_HASREF       =   4  '' mangled type has is reference type
+	FB_MANGLEOPT_NESTED       =   8  '' mangled type is nested in another type
 end enum
 
 enum FB_STRUCT_INREG
@@ -468,25 +484,26 @@ end type
 
 '' structure
 enum FB_UDTOPT
-	FB_UDTOPT_ISUNION           = &h0001
-	FB_UDTOPT_ISANON            = &h0002
-	FB_UDTOPT_HASPTRFIELD       = &h0004
-	FB_UDTOPT_HASCTORFIELD      = &h0008
-	FB_UDTOPT_HASDTORFIELD      = &h0010
-	FB_UDTOPT_HASRECBYVALPARAM  = &h0020
-	FB_UDTOPT_HASRECBYVALRES    = &h0040
-	FB_UDTOPT_HASGETPROPERTY    = &h0080
-	FB_UDTOPT_HASSETPROPERTY    = &h0100
-	FB_UDTOPT_HASIDXGETPROPERTY = &h0200
-	FB_UDTOPT_HASIDXSETPROPERTY = &h0400
-	FB_UDTOPT_HASKWDFIELD       = &h0800
-	FB_UDTOPT_HASINITEDFIELD        = &h1000
-	FB_UDTOPT_HASANONUNION          = &h2000
-	FB_UDTOPT_HASSTATICVAR          = &h4000
-	FB_UDTOPT_HASBITFIELD           = &h8000
-	FB_UDTOPT_ISWSTRING             = &h10000
-	FB_UDTOPT_ISZSTRING             = &h20000
-	FB_UDTOPT_VALISTTYPEMASK       = &hf00000
+	FB_UDTOPT_ISUNION           = &h00000001
+	FB_UDTOPT_ISANON            = &h00000002
+	FB_UDTOPT_HASPTRFIELD       = &h00000004
+	FB_UDTOPT_HASCTORFIELD      = &h00000008
+	FB_UDTOPT_HASDTORFIELD      = &h00000010
+	FB_UDTOPT_HASRECBYVALPARAM  = &h00000020
+	FB_UDTOPT_HASRECBYVALRES    = &h00000040
+	FB_UDTOPT_HASGETPROPERTY    = &h00000080
+	FB_UDTOPT_HASSETPROPERTY    = &h00000100
+	FB_UDTOPT_HASIDXGETPROPERTY = &h00000200
+	FB_UDTOPT_HASIDXSETPROPERTY = &h00000400
+	FB_UDTOPT_HASKWDFIELD       = &h00000800
+	FB_UDTOPT_HASINITEDFIELD    = &h00001000
+	FB_UDTOPT_HASANONUNION      = &h00002000
+	FB_UDTOPT_HASSTATICVAR      = &h00004000
+	FB_UDTOPT_HASBITFIELD       = &h00008000
+	FB_UDTOPT_ISWSTRING         = &h00010000
+	FB_UDTOPT_ISZSTRING         = &h00020000
+	FB_UDTOPT_HASNESTED         = &h00040000
+	FB_UDTOPT_VALISTTYPEMASK    = &h00f00000
 end enum
 
 type FB_STRUCT_DBG
@@ -510,7 +527,7 @@ type FB_STRUCTEXT
 end type
 
 type FBS_STRUCT
-	'' extends FBNAMESCP
+	'' extends FBNAMESPC
 	ns              as FBNAMESPC
 
 	base            as FBSYMBOL_ ptr            '' base class
@@ -556,7 +573,7 @@ type FBS_PARAM
 	optexpr         as ASTNODE_ ptr             '' default value
 	bydescdimensions    as integer
 	bydescrealsubtype   as FBSYMBOL_ ptr        '' bydesc array descriptor type
-	argnum          as integer                  '' argument number (1 is first)
+	regnum          as integer                  '' register number (1 is first, 0 is not in register)
 end type
 
 '' function
@@ -899,13 +916,13 @@ type SYMBCTX
 					0 to AST_OPCODES-1 _
 				)   as SYMB_OVLOP               '' global operator overloading
 
-	fbarray_data        as integer          '' offsetof( FBARRAY, data )
-	fbarray_ptr     as integer          '' offsetof( FBARRAY, ptr )
-	fbarray_size        as integer          '' offsetof( FBARRAY, size )
-	fbarray_dimtb       as integer          '' offsetof( FBARRAY, dimTB )
-	fbarraydim      as FBSYMBOL ptr         '' FBARRAYDIM (dimTB element structure)
-	fbarraydim_lbound   as integer          '' offsetof( FBARRAYDIM, lbound )
-	fbarraydim_ubound   as integer          '' offsetof( FBARRAYDIM, ubound )
+	fbarray_data        as integer              '' offsetof( FBARRAY, data )
+	fbarray_ptr         as integer              '' offsetof( FBARRAY, ptr )
+	fbarray_size        as integer              '' offsetof( FBARRAY, size )
+	fbarray_dimtb       as integer              '' offsetof( FBARRAY, dimTB )
+	fbarraydim          as FBSYMBOL ptr         '' FBARRAYDIM (dimTB element structure)
+	fbarraydim_lbound   as integer              '' offsetof( FBARRAYDIM, lbound )
+	fbarraydim_ubound   as integer              '' offsetof( FBARRAYDIM, ubound )
 
 	rtti            as FB_RTTICTX
 end type
@@ -948,6 +965,11 @@ declare sub symbEnd _
 	)
 
 declare sub symbDataInit( )
+
+declare function symbNewChainpool _
+	( _
+		byval sym as FBSYMBOL ptr _
+	) as FBSYMCHAIN ptr
 
 declare function symbLookup _
 	( _
@@ -1057,7 +1079,7 @@ declare function symbFindCastOvlProc _
 		byval to_subtype as FBSYMBOL ptr, _
 		byval expr as ASTNODE ptr, _
 		byval err_num as FB_ERRMSG ptr, _
-		byval is_explicit as integer = FALSE _
+		byval options as FB_SYMBLOOKUPOPT = FB_SYMBLOOKUPOPT_NONE _
 	) as FBSYMBOL ptr
 
 declare function symbFindCtorOvlProc _
@@ -1065,7 +1087,8 @@ declare function symbFindCtorOvlProc _
 		byval sym as FBSYMBOL ptr, _
 		byval expr as ASTNODE ptr, _
 		byval arg_mode as FB_PARAMMODE, _
-		byval err_num as FB_ERRMSG ptr _
+		byval err_num as FB_ERRMSG ptr, _
+		byval options as FB_SYMBLOOKUPOPT = FB_SYMBLOOKUPOPT_NONE _
 	) as FBSYMBOL ptr
 
 declare function symbFindCtorProc _
@@ -1384,6 +1407,7 @@ declare function symbAddCtor _
 declare function symbLookupInternallyMangledSubtype _
 	( _
 		byval id as zstring ptr, _
+		byval proc as FBSYMBOL ptr, _
 		byref attrib as FB_SYMBATTRIB, _
 		byref pattrib as FB_PROCATTRIB, _
 		byref parent as FBSYMBOL ptr, _
@@ -1886,7 +1910,8 @@ declare sub symbUdtAllocExt( byval udt as FBSYMBOL ptr )
 declare sub symbUdtDeclareDefaultMembers _
 	( _
 		byref default as SYMBDEFAULTMEMBERS, _
-		byval udt as FBSYMBOL ptr _
+		byval udt as FBSYMBOL ptr, _
+		byval mode as FB_FUNCMODE _
 	)
 
 declare sub symbUdtImplementDefaultMembers _
@@ -1937,7 +1962,22 @@ declare function symbCloneLabel _
 		byval sym as FBSYMBOL ptr _
 	) as FBSYMBOL ptr
 
-declare function symbCheckAccess( byval sym as FBSYMBOL ptr ) as integer
+declare function symbIsParentNamespace _
+	( _
+		byval dtype as FB_DATATYPE, _
+		byval subtype as FBSYMBOL ptr,  _
+		byval start_ns as FBSYMBOL ptr = NULL _
+	) as integer
+
+declare function symbCheckAccess _
+	( _
+		byval sym as FBSYMBOL ptr _
+	) as integer
+
+declare function symbCheckAccessStruct _
+	( _
+		byval sym as FBSYMBOL ptr _
+	) as integer
 
 declare function symbGetFullProcName _
 	( _
@@ -2347,6 +2387,9 @@ declare function symbCloneSimpleStruct( byval sym as FBSYMBOL ptr ) as FBSYMBOL 
 #define symbSetUdtIsWstring( s )   (s)->udt.options or= FB_UDTOPT_ISWSTRING
 #define symbGetUdtIsWstring( s ) (((s)->udt.options and FB_UDTOPT_ISWSTRING) <> 0 )
 
+#define symbSetUdtHasNested( s )   (s)->udt.options or= FB_UDTOPT_HASNESTED
+#define symbGetUdtHasNested( s ) (((s)->udt.options and FB_UDTOPT_HASNESTED) <> 0)
+
 #define symbGetUDTIsUnionOrAnon(s) (((s)->udt.options and (FB_UDTOPT_ISUNION or FB_UDTOPT_ISANON)) <> 0)
 
 #define symbGetUDTAlign(s) s->udt.align
@@ -2587,27 +2630,27 @@ declare sub symbProcRecalcRealType( byval proc as FBSYMBOL ptr )
 
 #define typeAddrOf( dt ) _
 	((dt and FB_DT_TYPEMASK) or _
-	 ((dt and FB_DT_PTRMASK) + (1 shl FB_DT_PTRPOS)) or _
-	 ((dt and FB_DT_CONSTMASK) shl 1) or _
-	 (dt and FB_DT_MANGLEMASK))
+	((dt and FB_DT_PTRMASK) + (1 shl FB_DT_PTRPOS)) or _
+	((dt and FB_DT_CONSTMASK) shl 1) or _
+	(dt and FB_DT_MANGLEMASK))
 
 #define typeMultAddrOf( dt, cnt ) _
 	((dt and FB_DT_TYPEMASK) or _
-	 ((dt and FB_DT_PTRMASK) + (cnt shl FB_DT_PTRPOS)) or _
-	 ((dt and FB_DT_CONSTMASK) shl cnt) or _
-	 (dt and FB_DT_MANGLEMASK))
+	((dt and FB_DT_PTRMASK) + (cnt shl FB_DT_PTRPOS)) or _
+	((dt and FB_DT_CONSTMASK) shl cnt) or _
+	(dt and FB_DT_MANGLEMASK))
 
 #define typeDeref( dt ) _
 	((dt and FB_DT_TYPEMASK) or _
-	 ((dt and FB_DT_PTRMASK) - (1 shl FB_DT_PTRPOS)) or _
-	 (((dt and FB_DT_CONSTMASK) shr 1) and FB_DT_CONSTMASK) or _
-	 (dt and FB_DT_MANGLEMASK))
+	((dt and FB_DT_PTRMASK) - (1 shl FB_DT_PTRPOS)) or _
+	(((dt and FB_DT_CONSTMASK) shr 1) and FB_DT_CONSTMASK) or _
+	(dt and FB_DT_MANGLEMASK))
 
 #define typeMultDeref( dt, cnt ) _
 	((dt and FB_DT_TYPEMASK) or _
-	 ((dt and FB_DT_PTRMASK) - (cnt shl FB_DT_PTRPOS)) or _
-	 (((dt and FB_DT_CONSTMASK) shr cnt) and FB_DT_CONSTMASK) or _
-	 (dt and FB_DT_MANGLEMASK))
+	((dt and FB_DT_PTRMASK) - (cnt shl FB_DT_PTRPOS)) or _
+	(((dt and FB_DT_CONSTMASK) shr cnt) and FB_DT_CONSTMASK) or _
+	(dt and FB_DT_MANGLEMASK))
 
 #define typeIsPtr( dt ) (((dt and FB_DT_PTRMASK) <> 0))
 #define typeGetPtrCnt( dt ) ((dt and FB_DT_PTRMASK) shr FB_DT_PTRPOS)
@@ -2652,9 +2695,10 @@ declare function symbDumpToStr _
 		byval verbose as boolean = false _
 	) as string
 
-declare sub symbDump( byval s as FBSYMBOL ptr )
+declare sub symbDump( byval s as FBSYMBOL ptr, byval verbose as integer = 0 )
 declare sub symbDumpNamespace( byval ns as FBSYMBOL ptr )
 declare sub symbDumpChain( byval chain_ as FBSYMCHAIN ptr )
+declare sub symbDumpLookup( byval id as zstring ptr )
 
 '' FBARRAY: 6 pointer/integer fields + the dimTB with 3 integer fields per dimension
 #define symbDescriptorHasRoomFor( sym, dimensions ) (symbGetLen( sym ) = env.pointersize * (((dimensions) * 3) + 6))
@@ -2669,4 +2713,4 @@ extern symb as SYMBCTX
 
 extern symb_dtypeTB( 0 to FB_DATATYPES-1 ) as SYMB_DATATYPE
 
-extern symb_dtypeMatchTB(FB_DATATYPE_BOOLEAN to FB_DATATYPE_DOUBLE, FB_DATATYPE_BOOLEAN to FB_DATATYPE_DOUBLE) as integer
+extern symb_dtypeMatchTB(FB_DATATYPE_FIRST_NUMERIC to FB_DATATYPE_LAST_NUMERIC, FB_DATATYPE_FIRST_NUMERIC to FB_DATATYPE_LAST_NUMERIC) as integer

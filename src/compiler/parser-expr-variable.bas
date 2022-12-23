@@ -1,7 +1,7 @@
 '' variable parsing (scalars, arrays, fields and anything between)
 ''
 '' chng: sep/2004 written [v1ctor]
-''		 oct/2004 arrays on fields [v1c]
+''       oct/2004 arrays on fields [v1c]
 
 
 #include once "fb.bi"
@@ -60,7 +60,7 @@ end function
 '' descriptor.
 ''
 private function cFixedSizeArrayIndex( byval sym as FBSYMBOL ptr ) as ASTNODE ptr
-    dim as ASTNODE ptr expr = any, dimexpr = any
+	dim as ASTNODE ptr expr = any, dimexpr = any
 	dim as integer dimension = any
 	dim as longint lower = any, upper = any
 
@@ -221,7 +221,7 @@ end function
 '':::::
 '' MemberId       =   ID ArrayIdx?
 ''
-private function hMemberId( byval parent as FBSYMBOL ptr ) as FBSYMBOL ptr
+private function hMemberId( byval parent as FBSYMBOL ptr, byval allow_inner as integer ) as FBSYMBOL ptr
 	dim as FBSYMBOL ptr res = any
 
 	if( parent = NULL ) then
@@ -253,52 +253,50 @@ private function hMemberId( byval parent as FBSYMBOL ptr ) as FBSYMBOL ptr
 		return res
 	end if
 
-    dim as FBSYMCHAIN ptr chain_ = symbLookupCompField( parent, lexGetText( ) )
-    if( chain_ = NULL ) then
+	dim as FBSYMCHAIN ptr chain_ = symbLookupCompField( parent, lexGetText( ) )
+	if( chain_ = NULL ) then
 		errReportUndef( FB_ERRMSG_ELEMENTNOTDEFINED, lexGetText( ) )
 		'' no error recovery: caller will take care
 		lexSkipToken( )
 		return NULL
-    end if
+	end if
 
-    '' since methods don't start a new hash, params and local
-    '' symbol dups will also be found
-	do
-		dim as FBSYMBOL ptr sym = chain_->sym
-		do
-			if( symbGetScope( sym ) = symbGetScope( parent ) ) then
-				select case as const symbGetClass( sym )
-				'' field or static members?
-				case FB_SYMBCLASS_FIELD, FB_SYMBCLASS_VAR, _
-				     FB_SYMBCLASS_CONST, FB_SYMBCLASS_ENUM
-					'' check visibility
-					if( symbCheckAccess( sym ) = FALSE ) then
-						errReport( FB_ERRMSG_ILLEGALMEMBERACCESS )
-					end if
+	'' symbLookupCompField()) which calls symbLookupAt() was
+	'' called with an explicit parent, so we should expect
+	'' that locals and params and any other symbols that shouldn't
+	'' be access through parent are already filtered out.  So
+	'' we can just return the first symbol found without searching
+	'' through any extra symbols or chains.
 
-				'' method?
-				case FB_SYMBCLASS_PROC
+	dim as FBSYMBOL ptr sym = chain_->sym
 
-				case else
-					errReportEx( FB_ERRMSG_INTERNAL, __FUNCTION__ )
-					return NULL
-				end select
+	select case as const symbGetClass( sym )
+	'' field, static members, or inner types?
+	case FB_SYMBCLASS_FIELD, FB_SYMBCLASS_VAR, _
+	     FB_SYMBCLASS_CONST, FB_SYMBCLASS_ENUM
 
-				return sym
-			end if
+		'' Check visibility of member
+		if( symbCheckAccess( sym ) = FALSE ) then
+			errReport( FB_ERRMSG_ILLEGALMEMBERACCESS )
+		end if
 
-			sym = sym->hash.next
-		loop while( sym <> NULL )
+	case FB_SYMBCLASS_STRUCT, FB_SYMBCLASS_TYPEDEF, FB_SYMBCLASS_FWDREF
+		if( allow_inner = FALSE ) then
+			errReportUndef( FB_ERRMSG_ELEMENTNOTDEFINED, lexGetText( ) )
+			'' no error recovery: caller will take care
+			lexSkipToken( )
+			return NULL
+		end if
 
-		chain_ = chain_->next
-    loop while( chain_ <> NULL )
+	'' method?
+	case FB_SYMBCLASS_PROC
 
-    '' nothing found..
-    errReportUndef( FB_ERRMSG_ELEMENTNOTDEFINED, lexGetText( ) )
-    '' no error recovery: caller will take care
-    lexSkipToken( )
+	case else
+		errReportEx( FB_ERRMSG_INTERNAL, __FUNCTION__ )
+		return NULL
+	end select
 
-    function = NULL
+	return sym
 
 end function
 
@@ -318,24 +316,24 @@ function cUdtMember _
 	dim as integer is_ptr = TRUE, mask = typeGetConstMask( dtype )
 
 	do
-		dim	as FBSYMBOL	ptr	fld	= hMemberId( subtype )
-		if(	fld	= NULL ) then
+		dim as FBSYMBOL ptr fld = hMemberId( subtype, FALSE )
+		if( fld = NULL ) then
 			return NULL
-		end	if
+		end if
 
-		select case	as const symbGetClass( fld )
+		select case as const symbGetClass( fld )
 		'' const? (enum elmts too), exit
 		case FB_SYMBCLASS_CONST
 			lexSkipToken( LEXCHECK_POST_SUFFIX )
 
-			astDeltree(	varexpr	)
+			astDeltree( varexpr )
 			return astBuildConst( fld )
 
 		'' enum?
 		case FB_SYMBCLASS_ENUM
 			lexSkipToken( LEXCHECK_POST_SUFFIX )
 
-			astDeltree(	varexpr	)
+			astDeltree( varexpr )
 			varexpr = NULL
 
 			'' '.'?
@@ -348,8 +346,8 @@ function cUdtMember _
 			lexSkipToken( LEXCHECK_POST_SUFFIX )
 
 			'' make sure the field inherits the parent's constant mask
-			dtype =	symbGetFullType( fld ) or mask
-			subtype	= symbGetSubType( fld )
+			dtype = symbGetFullType( fld ) or mask
+			subtype = symbGetSubType( fld )
 
 			if( is_ptr = FALSE ) then
 				varexpr = astNewADDROF( varexpr )
@@ -372,25 +370,25 @@ function cUdtMember _
 			varexpr = cVariableEx( fld, check_array )
 
 			'' make sure the field inherits the parent's constant mask
-			dtype =	symbGetFullType( fld ) or mask
-			subtype	= symbGetSubType( fld )
+			dtype = symbGetFullType( fld ) or mask
+			subtype = symbGetSubType( fld )
 
-			select case	typeGet( dtype )
-			case FB_DATATYPE_STRUCT	', FB_DATATYPE_CLASS
-				if(	lexGetToken( ) <> CHAR_DOT ) then
+			select case typeGet( dtype )
+			case FB_DATATYPE_STRUCT ', FB_DATATYPE_CLASS
+				if( lexGetToken( ) <> CHAR_DOT ) then
 					return varexpr
-				end	if
+				end if
 
 			case else
 				return varexpr
-			end	select
+			end select
 
 			is_ptr = FALSE
 
 		'' method?
 		case FB_SYMBCLASS_PROC
 			if( is_ptr ) then
-				varexpr	= astNewDEREF( varexpr,	dtype, subtype )
+				varexpr = astNewDEREF( varexpr, dtype, subtype )
 			end if
 
 			return cMethodCall( fld, varexpr, options )
@@ -398,9 +396,9 @@ function cUdtMember _
 		case else
 			errReportEx( FB_ERRMSG_INTERNAL, __FUNCTION__ )
 			return NULL
-		end	select
+		end select
 
-		lexSkipToken( LEXCHECK_NOPERIOD	or LEXCHECK_POST_SUFFIX )
+		lexSkipToken( LEXCHECK_NOPERIOD or LEXCHECK_POST_SUFFIX )
 	loop
 
 	function = varexpr
@@ -414,7 +412,8 @@ sub cUdtTypeMember _
 		byref dtype as integer, _
 		byref subtype as FBSYMBOL ptr, _
 		byref lgt as longint, _
-		byref is_fixlenstr as integer _
+		byref is_fixlenstr as integer, _
+		byref ret_sym as FBSYMBOL ptr = NULL _
 	)
 
 	'' UDT type followed by '.'?
@@ -427,13 +426,22 @@ sub cUdtTypeMember _
 		lexSkipToken( LEXCHECK_NOPERIOD )
 
 		'' check member field, See also hLenSizeof()
-		dim sym as FBSYMBOL ptr = hMemberId( subtype )
+		dim sym as FBSYMBOL ptr = hMemberId( subtype, TRUE )
 
 		if( sym ) then
 			'' ID
 			lexSkipToken( LEXCHECK_POST_SUFFIX )
-			dtype = symbGetFullType( sym )
-			subtype = symbGetSubType( sym )
+
+			ret_sym = sym
+
+			'' Struct? must be a type and could be followed by '.' member access
+			if( symbGetClass( sym ) = FB_SYMBCLASS_STRUCT ) then
+				subtype = sym
+			else
+				dtype = symbGetFullType( sym )
+				subtype = symbGetSubType( sym )
+			end if
+
 			lgt = symbGetLen( sym )
 			is_fixlenstr = symbGetIsFixLenStr( sym )
 
@@ -466,7 +474,7 @@ function cMemberAccess _
 		expr = astBuildCallResultUdt( expr )
 	end if
 
- 	'' build: cast( udt ptr, (cast( byte ptr, @udt) + fldexpr))->field
+	'' build: cast( udt ptr, (cast( byte ptr, @udt) + fldexpr))->field
 	function = cUdtMember( dtype, subtype, astNewADDROF( expr ), TRUE )
 
 end function
@@ -500,7 +508,7 @@ private function hStrIndexing _
 	if( typeGet( dtype ) = FB_DATATYPE_WCHAR ) then
 		'' times sizeof( wchar ) if it's wstring
 		idxexpr = astNewBOP( AST_OP_MUL, idxexpr, _
-			astNewCONSTi( typeGetSize( FB_DATATYPE_WCHAR ) ) )
+		                     astNewCONSTi( typeGetSize( FB_DATATYPE_WCHAR ) ) )
 	end if
 
 	'' null pointer checking
@@ -533,7 +541,7 @@ private function hMultiDeref( ) as integer
 end function
 
 '':::::
-''MemberDeref	=   (('->' DREF* | '[' Expression ']' '.'?) UdtMember)* .
+''MemberDeref   =   (('->' DREF* | '[' Expression ']' '.'?) UdtMember)* .
 ''
 function cMemberDeref _
 	( _
@@ -616,7 +624,7 @@ function cMemberDeref _
 
 				'' MemberAccess
 				varexpr = cMemberAccess( astGetFullType( varexpr ), _
-						astGetSubType( varexpr ), varexpr )
+				                         astGetSubType( varexpr ), varexpr )
 			end if
 
 			if( varexpr = NULL ) then
@@ -664,7 +672,7 @@ function cMemberDeref _
 			select case( typeGetDtAndPtrOnly( dtype ) )
 			'' string, fixstr, w|zstring? In that case '[]' means string indexing, not MemberDeref.
 			case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-				 FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+			     FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
 				varexpr = hStrIndexing( dtype, varexpr, hCheckIntegerIndex( idxexpr ) )
 				idxexpr = NULL
 
@@ -689,7 +697,7 @@ function cMemberDeref _
 
 					'' MemberAccess
 					varexpr = cMemberAccess( astGetFullType( varexpr ), _
-							astGetSubType( varexpr ), varexpr )
+					                         astGetSubType( varexpr ), varexpr )
 					if( varexpr = NULL ) then
 						exit function
 					end if
@@ -739,7 +747,7 @@ function cMemberDeref _
 				'' ptr[index]  =>  ptr + (index * sizeof(*ptr))
 				'' (DEREF added later below, so we can pass the pointer to cUdtMember() first if needed)
 				varexpr = astNewBOP( AST_OP_ADD, varexpr, _
-					astNewBOP( AST_OP_MUL, idxexpr, astNewCONSTi( lgt ) ) )
+				                     astNewBOP( AST_OP_MUL, idxexpr, astNewCONSTi( lgt ) ) )
 
 				'' '.'?
 				if( lexGetToken( ) = CHAR_DOT ) then
@@ -768,6 +776,14 @@ function cMemberDeref _
 
 			end select
 
+		'' '.'?
+		case CHAR_DOT
+			if( typeIsPtr( dtype ) ) then
+				errReport( FB_ERRMSG_EXPECTEDUDT, TRUE )
+			end if
+
+			exit do
+
 		'' Only processing -> and [] here...
 		case else
 			exit do
@@ -778,8 +794,8 @@ function cMemberDeref _
 end function
 
 '':::::
-''FuncPtrOrDeref	=   FuncPtr '(' Args? ')'
-''					|   MemberDeref .
+''FuncPtrOrDeref    =   FuncPtr '(' Args? ')'
+''                  |   MemberDeref .
 ''
 function cFuncPtrOrMemberDeref _
 	( _
@@ -795,7 +811,7 @@ function cFuncPtrOrMemberDeref _
 	''
 	if( isfuncptr = FALSE ) then
 		'' MemberDeref?
-		expr = 	cMemberDeref( dtype, subtype, expr, checkarray )
+		expr =  cMemberDeref( dtype, subtype, expr, checkarray )
 		if( expr = NULL ) then
 			exit function
 		end if
@@ -803,12 +819,12 @@ function cFuncPtrOrMemberDeref _
 		dtype = astGetDataType( expr )
 		subtype = astGetSubType( expr )
 
-   		'' check for functions called through pointers
-   		if( lexGetToken( ) = CHAR_LPRNT ) then
-   			if( dtype = typeAddrOf( FB_DATATYPE_FUNCTION ) ) then
+		'' check for functions called through pointers
+		if( lexGetToken( ) = CHAR_LPRNT ) then
+			if( dtype = typeAddrOf( FB_DATATYPE_FUNCTION ) ) then
 				isfuncptr = TRUE
-   			end if
-   		end if
+			end if
+		end if
 	end if
 
 	'' function pointer dref? call it
@@ -868,8 +884,8 @@ private function cDynamicArrayIndex _
 		'' bounds checking
 		if( env.clopt.arrayboundchk ) then
 			dimexpr = astBuildBOUNDCHK( dimexpr, _
-					astBuildDerefAddrOf( astCloneTree( descexpr ), dimoffset + symb.fbarraydim_lbound, FB_DATATYPE_INTEGER, NULL ), _
-					astBuildDerefAddrOf( astCloneTree( descexpr ), dimoffset + symb.fbarraydim_ubound, FB_DATATYPE_INTEGER, NULL ) )
+			                            astBuildDerefAddrOf( astCloneTree( descexpr ), dimoffset + symb.fbarraydim_lbound, FB_DATATYPE_INTEGER, NULL ), _
+			                            astBuildDerefAddrOf( astCloneTree( descexpr ), dimoffset + symb.fbarraydim_ubound, FB_DATATYPE_INTEGER, NULL ) )
 			assert( dimexpr )
 		end if
 
@@ -920,9 +936,10 @@ private function hVarAddUndecl _
 		if( symbIsGlobalNamespc( ) = FALSE ) then
 			if( fbIsModLevel( ) ) then
 				if( (attrib and (FB_SYMBATTRIB_SHARED or _
-								 FB_SYMBATTRIB_COMMON or _
-								 FB_SYMBATTRIB_PUBLIC or _
-								 FB_SYMBATTRIB_EXTERN)) = 0 ) then
+				                 FB_SYMBATTRIB_COMMON or _
+				                 FB_SYMBATTRIB_PUBLIC or _
+				                 FB_SYMBATTRIB_EXTERN)) = 0 ) then
+
 					'' they are never allocated on stack..
 					attrib or= FB_SYMBATTRIB_STATIC
 				end if
@@ -944,7 +961,7 @@ private function hVarAddUndecl _
 	if( fbLangOptIsSet( FB_LANG_OPT_SCOPE ) ) then
 		'' deprecated quirk: not inside an explicit SCOPE .. END SCOPE block?
 		if( fbGetIsScope( ) = FALSE ) then
- 			options or= FB_SYMBOPT_UNSCOPE
+			options or= FB_SYMBOPT_UNSCOPE
 		end if
 
 	'' no scopes..
@@ -977,17 +994,17 @@ private function hMakeArrayIdx( byval sym as FBSYMBOL ptr ) as ASTNODE ptr
 	if( symbIsParamVarByDesc( sym ) ) then
 		'' return descriptor->data
 		return astNewDEREF( astNewVAR( sym, 0, FB_DATATYPE_INTEGER ), _
-				FB_DATATYPE_INTEGER, NULL, symb.fbarray_data )
+		                    FB_DATATYPE_INTEGER, NULL, symb.fbarray_data )
 	end if
 
 	'' dynamic array? (this will handle common's too)
 	if( symbIsDynamic( sym ) ) then
 		'' return descriptor.data
 		return astNewVAR( symbGetArrayDescriptor( sym ), _
-				symb.fbarray_data, FB_DATATYPE_INTEGER )
+		                  symb.fbarray_data, FB_DATATYPE_INTEGER )
 	end if
 
-    '' static array, return lbound( array )
+	'' static array, return lbound( array )
 	assert( symbGetArrayDimensions( sym ) > 0 )
 	function = astNewCONSTi( symbArrayLbound( sym, 0 ) )
 end function
@@ -1008,7 +1025,7 @@ function cVariableEx overload _
 
 	assert( symbIsVar( sym ) )
 
-	'' check visibility
+	'' Check visibility of the variable
 	if( symbCheckAccess( sym ) = FALSE ) then
 		errReport( FB_ERRMSG_ILLEGALMEMBERACCESS )
 	end if
@@ -1020,8 +1037,8 @@ function cVariableEx overload _
 	is_array = symbIsArray( sym )
 	is_funcptr = FALSE
 
-    varexpr = NULL
-    idxexpr = NULL
+	varexpr = NULL
+	idxexpr = NULL
 
 	dim as integer check_fields = TRUE, is_nidxarray = FALSE
 
@@ -1051,7 +1068,7 @@ function cVariableEx overload _
 
 					'' plus desc.data (= ptr + diff)
 					idxexpr = astNewBOP( AST_OP_ADD, idxexpr, _
-						astBuildDerefAddrOf( descexpr, symb.fbarray_data, FB_DATATYPE_INTEGER, NULL ) )
+					                     astBuildDerefAddrOf( descexpr, symb.fbarray_data, FB_DATATYPE_INTEGER, NULL ) )
 				else
 					idxexpr = cFixedSizeArrayIndex( sym )
 				end if
@@ -1063,7 +1080,7 @@ function cVariableEx overload _
 					hSkipUntil( CHAR_RPRNT, TRUE )
 				end if
 			else
-   				'' check if calling functions through pointers
+				'' check if calling functions through pointers
 				is_funcptr = (symbGetType( sym ) = typeAddrOf( FB_DATATYPE_FUNCTION ))
 
 				'' using (...) with scalars?
@@ -1117,10 +1134,10 @@ function cVariableEx overload _
 	assert( varexpr->dtype = sym->typ )
 	assert( varexpr->subtype = sym->subtype )
 
-   	if( is_funcptr = FALSE ) then
-   		if( check_fields ) then
-   			'' ('.' UdtMember)?
-   			if( lexGetToken( ) = CHAR_DOT ) then
+	if( is_funcptr = FALSE ) then
+		if( check_fields ) then
+			'' ('.' UdtMember)?
+			if( lexGetToken( ) = CHAR_DOT ) then
 
 				if( astGetDataType( varexpr ) <> FB_DATATYPE_STRUCT ) then
 					errReport( FB_ERRMSG_EXPECTEDUDT, TRUE )
@@ -1128,29 +1145,29 @@ function cVariableEx overload _
 					return varexpr
 				end if
 
-   				lexSkipToken( LEXCHECK_NOPERIOD )
+				lexSkipToken( LEXCHECK_NOPERIOD )
 
 				varexpr = cUdtMember( varexpr->dtype, varexpr->subtype, astNewADDROF( varexpr ), check_array )
-   				if( varexpr = NULL ) then
-   					exit function
-   				end if
+				if( varexpr = NULL ) then
+					exit function
+				end if
 
-   				'' non-indexed array?
+				'' non-indexed array?
 				if( astIsNIDXARRAY( varexpr ) ) then
 					return varexpr
 				end if
 
-				'' check if	calling	functions through pointers
-				if(	lexGetToken( ) = CHAR_LPRNT	) then
+				'' check if calling functions through pointers
+				if( lexGetToken( ) = CHAR_LPRNT ) then
 					is_funcptr = (astGetDataType( varexpr ) = typeAddrOf( FB_DATATYPE_FUNCTION ))
-				end	if
+				end if
 
 			end if
-   		end if
-   	end if
+		end if
+	end if
 
-    if( check_fields ) then
-    	'' FuncPtrOrMemberDeref?
+	if( check_fields ) then
+		'' FuncPtrOrMemberDeref?
 		varexpr = cFuncPtrOrMemberDeref( varexpr->dtype, varexpr->subtype, varexpr, is_funcptr, check_array )
 	else
 		if( is_nidxarray ) then
@@ -1188,13 +1205,13 @@ function cVariableEx _
 	end if
 
 	if( fbLangOptIsSet( FB_LANG_OPT_SUFFIX ) ) then
-    	'' no suffix? lookup the default type (last DEF###) in the
-    	'' case symbol could not be found..
-    	if( suffix = FB_DATATYPE_INVALID ) then
-    		sym = symbFindVarByDefType( chain_, symbGetDefType( id ) )
-    	else
-    		sym = symbFindVarBySuffix( chain_, suffix )
-    	end if
+		'' no suffix? lookup the default type (last DEF###) in the
+		'' case symbol could not be found..
+		if( suffix = FB_DATATYPE_INVALID ) then
+			sym = symbFindVarByDefType( chain_, symbGetDefType( id ) )
+		else
+			sym = symbFindVarBySuffix( chain_, suffix )
+		end if
 
 	else
 		if( suffix <> FB_DATATYPE_INVALID ) then
@@ -1214,18 +1231,18 @@ function cVariableEx _
 		end if
 
 		'' don't allow explicit namespaces
-    	if( chain_ <> NULL ) then
-    		if( fbLangOptIsSet( FB_LANG_OPT_SUFFIX ) ) then
-    			'' variable?
-    			sym = symbFindByClass( chain_, FB_SYMBCLASS_VAR )
-    			if( sym <> NULL ) then
-    				'' from a different namespace?
-    				if( symbGetNamespace( sym ) <> symbGetCurrentNamespc( ) ) then
+		if( chain_ <> NULL ) then
+			if( fbLangOptIsSet( FB_LANG_OPT_SUFFIX ) ) then
+				'' variable?
+				sym = symbFindByClass( chain_, FB_SYMBCLASS_VAR )
+				if( sym <> NULL ) then
+					'' from a different namespace?
+					if( symbGetNamespace( sym ) <> symbGetCurrentNamespc( ) ) then
 						errReport( FB_ERRMSG_DECLOUTSIDENAMESPC )
-    				end if
-    			end if
-    		end if
-    	end if
+					end if
+				end if
+			end if
+		end if
 
 		'' add undeclared variable
 		sym = hVarAddUndecl( id, suffix )
@@ -1268,30 +1285,27 @@ private function hImpField _
 
 	varexpr = cUdtMember( dtype, subtype, varexpr, check_array, options )
 
-   	if( varexpr = NULL ) then
-   		return NULL
-   	end if
+	if( varexpr = NULL ) then
+		return NULL
+	end if
 
-   	'' non-indexed array?
-   	if( astIsNIDXARRAY( varexpr ) ) then
-   		return varexpr
-   	end if
+	'' non-indexed array?
+	if( astIsNIDXARRAY( varexpr ) ) then
+		return varexpr
+	end if
 
-	dtype =	astGetFullType( varexpr )
-	subtype	= astGetSubType( varexpr )
+	dtype = astGetFullType( varexpr )
+	subtype = astGetSubType( varexpr )
 
-	'' check if	calling	functions through pointers
+	'' check if calling functions through pointers
 	dim as integer is_funcptr = FALSE
-	if(	lexGetToken( ) = CHAR_LPRNT	) then
+	if( lexGetToken( ) = CHAR_LPRNT ) then
 		is_funcptr = (typeGetDtAndPtrOnly( dtype ) = typeAddrOf( FB_DATATYPE_FUNCTION ))
-	end	if
+	end if
 
-    '' FuncPtrOrMemberDeref?
-	function = cFuncPtrOrMemberDeref( dtype, _
-								 	  subtype, _
-								 	  varexpr, _
-								 	  is_funcptr, _
-								 	  check_array )
+	'' FuncPtrOrMemberDeref?
+	function = cFuncPtrOrMemberDeref( dtype, subtype, varexpr, is_funcptr, check_array )
+
 end function
 
 ''  WithVariable  = '.' UdtMember FuncPtrOrMemberDeref? .
@@ -1309,7 +1323,7 @@ function cWithVariable( byval check_array as integer ) as ASTNODE ptr
 	end if
 
 	function = hImpField( sym, dtype, symbGetSubtype( sym ), check_array, _
-				parser.stmt.with->with.is_ptr, 0 )
+	                      parser.stmt.with->with.is_ptr, 0 )
 end function
 
 '':::::
@@ -1322,9 +1336,9 @@ function cVariable _
 	) as ASTNODE ptr
 
 	'' ID
-    select case lexGetClass( )
-    case FB_TKCLASS_IDENTIFIER, FB_TKCLASS_QUIRKWD
-	    return cVariableEx( chain_, check_array )
+	select case lexGetClass( )
+	case FB_TKCLASS_IDENTIFIER, FB_TKCLASS_QUIRKWD
+		return cVariableEx( chain_, check_array )
 
 	case else
 		if( parser.stmt.with = NULL ) then
@@ -1363,13 +1377,13 @@ function cImplicitDataMember _
 		errReport( FB_ERRMSG_STATICMEMBERHASNOINSTANCEPTR )
 		return NULL
 	end if
-	
+
 	if( base_parent = NULL ) then
 		base_parent = symbGetSubtype( this_ )
 	End If
 
 	function = hImpField( this_, symbGetFullType( this_ ), base_parent, _
-				check_array, TRUE, options )
+	                      check_array, TRUE, options )
 
 end function
 

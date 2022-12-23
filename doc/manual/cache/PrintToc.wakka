@@ -35,6 +35,7 @@
 		[[KeyPgDdfbfreebsd|__FB_FREEBSD__]]
 		[[KeyPgDdfbgcc|__FB_GCC__]]
 		[[KeyPgDdfbgui|__FB_GUI__]]
+		[[KeyPgDdfbiif|__FB_IIF__]]
 		[[KeyPgDdfbjoin|__FB_JOIN__]]
 		[[KeyPgDdfblang|__FB_LANG__]]
 		[[KeyPgDdfblinux|__FB_LINUX__]]
@@ -43,6 +44,7 @@
 		[[KeyPgDdfbmt|__FB_MT__]]
 		[[KeyPgDdfbnetbsd|__FB_NETBSD__]]
 		[[KeyPgDdfbopenbsd|__FB_OPENBSD__]]
+		[[KeyPgDdfboptimize|__FB_OPTIMIZE__]]
 		[[KeyPgDdfboptionbyval|__FB_OPTION_BYVAL__]]
 		[[KeyPgDdfboptiondynamic|__FB_OPTION_DYNAMIC__]]
 		[[KeyPgDdfboptionescape|__FB_OPTION_ESCAPE__]]
@@ -81,6 +83,7 @@
 
 	{{fbdoc item="subsect" value="#"}}
 		[[KeyPgPpassert|#ASSERT]]
+		[[KeyPgPpcmdline|#CMDLINE]]
 		[[KeyPgPpdefine|#DEFINE]]
 		[[KeyPgPpelse|#ELSE]]
 		[[KeyPgPpelseif|#ELSEIF]]
@@ -96,7 +99,8 @@
 		[[KeyPgPplibpath|#LIBPATH]]
 		[[KeyPgPpline|#LINE]]
 		[[KeyPgPpmacro|#MACRO]]
-		[[KeyPgPragma|#PRAGMA]]
+		[[KeyPgPpPragma|#PRAGMA]]
+		[[KeyPgPpPragmaReserve|#PRAGMA RESERVE]]
 		[[KeyPgPpprint|#PRINT]]
 		[[KeyPgPpundef|#UNDEF]]
 
@@ -126,6 +130,8 @@
 		[[KeyPgAndGfx|AND (GRAPHICS PUT)]]
 		[[KeyPgAny|ANY]]
 		[[KeyPgAppend|APPEND]]
+		[[KeyPgArrayLen|ARRAYLEN]]
+		[[KeyPgArraySize|ARRAYSIZE]]
 		[[KeyPgAs|AS]]
 		[[KeyPgAsc|ASC]]
 		[[KeyPgAsin|ASIN]]
@@ -556,6 +562,7 @@
 		[[KeyPgTan|TAN]]
 		[[KeyPgThen|THEN]]
 		[[KeyPgThis|THIS]]
+		[[KeyPgThiscall|THISCALL]]
 		[[KeyPgThreadCall|THREADCALL]]
 		[[KeyPgThreadCreate|THREADCREATE]]
 		[[KeyPgThreadDetach|THREADDETACH]]
@@ -793,7 +800,8 @@
 		[[ProPgIdentifierRules|Identifier Rules]]
 		[[ProPgLiterals|Literals]]
 		[[ProPgLabels|Labels]]
-		[[ProPgLineContinuation|Line continuation]]
+		[[ProPgLineContinuation|Line Continuation]]
+		[[ProPgLineSeparator|Line Separator]]
 
 	{{fbdoc item="subsect" value="Variables and Datatypes"}}
 		[[ProPgEnumerations|Constants and Enumerations]]
@@ -832,6 +840,7 @@
 		[[ProPgUDTs|Overview]]
 		[[ProPgTypeAliases|Type Aliases]]
 		[[KeyPgTypeTemp|Temporary Types]]
+		[[ProPgTypeUnion|Type (UDT/Alias/Temporary) and Union]]
 		[[ProPgCtorsDtors|Constructors and Destructors (basics)]]
 		[[ProPgMemberProcedures|Member Procedures]]
 		[[ProPgProperties|Properties]]
@@ -848,6 +857,7 @@
 
 	{{fbdoc item="subsect" value="Statements and Expressions"}}
 		[[ProPgExpressionsStatements|Differences between Expressions and Statements]]
+		[[ProPgConstantExpressions|Constant Expressions]]
 		[[ProPgAssignments|Assignments]]
 		[[OpPrecedence|Operator Precedence]]
 		[[ProPgControlFlow|Control Flow Statements]]
@@ -896,6 +906,7 @@
 		[[ProPgDynamicMemory|Dynamic memory management with FreeBASIC]]
 		[[ProPgRecursionIteration|Replace Recursion with Iteration]]
 		[[ProPgObjectRtti|OBJECT built-in and RTTI info]]
+		[[ProPgDataExecutable|Embed and Access binary Data in Executable]]
 
 	{{fbdoc item="subsect" value="Other Topics"}}
 		[[CptAscii|ASCII]]
@@ -904,6 +915,7 @@
 		[[ProPgErrorHandling|Error Handling]]
 		[[ProPgEventHandling|Event Handling]]
 		[[CatPgDddefines|Intrinsic Defines]]
+		[[ProPgIdentifierLookup|Identifier Look-ups in namespaces and types]]
 	[[CommunityTutorials|Community Tutorials]]
 	[[CodeLibrary|Community Code Library]]
 
@@ -1034,6 +1046,7 @@
 		[[CompilerOptarch|-arch < type >]]
 		[[CompilerOptasm|-asm < format >]]
 		[[CompilerOptb|-b < name >]]
+		[[CompilerOptbuildprefix|-buildprefix]]
 		[[CompilerOptc|-c]]
 		[[CompilerOptcupp|-C]]
 		[[CompilerOptd|-d < name=val >]]
@@ -1047,11 +1060,12 @@
 		[[CompilerOptelocation|-elocation]]
 		[[CompilerOptentry|-entry < name >]]
 		[[CompilerOptenullptr|-enullptr]]
+		[[CompilerOpteunwind|-eunwind]]
 		[[CompilerOptex|-ex]]
 		[[CompilerOptexx|-exx]]
 		[[CompilerOptexport|-export]]
 		[[CompilerOptforcelang|-forcelang <name>]]
-		[[compileroptfpmode|-fpmode < type >]]
+		[[CompilerOptfpmode|-fpmode < type >]]
 		[[CompilerOptfpu|-fpu < type >]]
 		[[CompilerOptg|-g]]
 		[[CompilerOptgen|-gen < backend >]]
@@ -1065,6 +1079,7 @@
 		[[CompilerOptmaxerr|-maxerr < val >]]
 		[[CompilerOptmt|-mt]]
 		[[CompilerOptnodeflibs|-nodeflibs]]
+		[[CompilerOptnolib|-nolib < name(s) >]]
 		[[CompilerOptnoerrline|-noerrline]]
 		[[CompilerOptnoobjinfo|-noobjinfo]]
 		[[CompilerOptnostrip|-nostrip]]

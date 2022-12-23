@@ -45,16 +45,89 @@ private function hDefLine_cb() as string static
 	function = str( lexLineNum( ) )
 end function
 
+private function UnixTimeToDateSerial( byval dat as longint ) as double
+	return 25569# + (cdbl(dat) / 86400#)
+end function
+
+/'
+'' for reference, reverse of UnixTimeToDateSerial()
+private function DateSerialToUnixTime( byval dat as double ) as longint
+	return (dat - 25569#) * 86400#
+end function
+'/
+
+private function hCheckSourceDateEpoch( byref s as string ) as boolean
+	dim tmp as string
+	dim value as double
+
+	'' ignore trailing/leading spaces
+	tmp = trim( s )
+
+	'' don't allow if it was only spaces
+	if( len(tmp) = 0 ) then
+		return FALSE
+	end if
+
+	'' Any invalid characters? (only allow characters 0123456789)
+	for i as integer = 0 to len(tmp)-1
+		if( (s[i] < CHAR_0) or (s[i] > CHAR_9) ) then
+			return FALSE
+		end if
+	next
+
+	'' don't allow if greater than 9999-12-31 23:59:59
+	value = culngint(s)
+	if( culngint(value) > 253402300799ull ) then
+		return FALSE
+	end if
+
+	return TRUE
+end function
+
+private function hGetCompileTime() as double
+
+	'' usage = 0 - first time called - do checks
+	''         1 - use current date/time
+	''         2 - SOURCE_DATE_EPOCH set and valid
+	''
+	'' source_date_epoch = cached value of SOURCE_DATE_EPOCH
+
+	static usage as integer = 0
+	static source_date_epoch as double = 0
+
+	if( usage = 0 ) then
+		dim ret as string
+
+		usage = 1
+		ret = environ( "SOURCE_DATE_EPOCH" )
+
+		if( len(ret) > 0 ) then
+			if( hCheckSourceDateEpoch( ret ) ) then
+				source_date_epoch = UnixTimeToDateSerial( culngint(ret) )
+				usage = 2
+			else
+				errReportEx( FB_ERRMSG_MALFORMEDSOURCEDATEEPOCH, NULL )
+			end if
+		end if
+	end if
+
+	if( usage = 2 ) then
+		function = source_date_epoch
+	else
+		function = now()
+	end if
+end function
+
 private function hDefDate_cb() as string static
-	function = date
+	function = format( hGetCompileTime(), "mm-dd-yyyy" )
 end function
 
 private function hDefDateISO_cb() as string static
-	function = format( now( ), "yyyy-mm-dd" )
+	function = format( hGetCompileTime(), "yyyy-mm-dd" )
 end function
 
 private function hDefTime_cb() as string static
-	function = time
+	function = format( hGetCompileTime(), "hh:nn:ss" )
 end function
 
 private function hDefMultithread_cb() as string static
@@ -152,6 +225,10 @@ private function hDefErr_cb() as string
 		res or= &h0100
 	end if
 
+	if( env.clopt.unwindinfo ) then
+		res or= &h0200
+	end if
+
 	function = str( res )
 end function
 
@@ -240,13 +317,18 @@ private function hMacro_getArgW( byval argtb as LEXPP_ARGTB ptr, byval num as in
 
 end function
 
-private function hMacro_EvalZ( byval arg as zstring ptr ) as string
+private function hMacro_EvalZ( byval arg as zstring ptr, byval errnum as integer ptr ) as string
 
 	'' the expression should have already been handled in hLoadMacro|hLoadMacroW
 	'' so, if we do get here, just pass the argument back as-is
 	'' !!!TODO!!! - DZSTRING can be replaced by STRING
 	dim as DZSTRING res
 	DZStrAssign( res, NULL )
+
+	if( env.includerec >= FB_MAXINCRECLEVEL ) then
+		*errnum = FB_ERRMSG_RECLEVELTOODEEP
+		return *res.data
+	end if
 
 	if( arg ) then
 
@@ -320,7 +402,7 @@ private function hMacro_EvalZ( byval arg as zstring ptr ) as string
 
 end function
 
-private function hMacro_EvalW( byval arg as wstring ptr ) as wstring ptr
+private function hMacro_EvalW( byval arg as wstring ptr, byval errnum as integer ptr ) as wstring ptr
 
 	'' the expression should have already been handled in hLoadMacro|hLoadMacroW
 	'' so, if we do get here, just pass the argument back as-is
@@ -329,6 +411,11 @@ private function hMacro_EvalW( byval arg as wstring ptr ) as wstring ptr
 
 	static as DWSTRING res
 	DWStrAssign( res, NULL )
+
+	if( env.includerec >= FB_MAXINCRECLEVEL ) then
+		*errnum = FB_ERRMSG_RECLEVELTOODEEP
+		return res.data
+	end if
 
 	if( arg ) then
 
@@ -523,32 +610,28 @@ private function hDefArgExtract_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum
 		'' Val returns 0 on failure which we can't detect from a valid 0
 		'' so check and construct the number manually
 
-		dim as string varstr = hMacro_EvalZ(numStr)
-		var pnumStr = strptr(varstr)
+		dim as string varstr = hMacro_EvalZ( numStr, errnum )
+		dim as long index
 
-		dim numArgLen as Long = Len(*pnumStr), i as Long, index as ULong = 0
-		dim zeroVal As ULong = Asc("0")
-		For i = 0 To numArgLen - 1
-			if( Not hIsCharNumeric(pnumStr[i]) ) then
-				Exit For
-			End If
-			index *= 10
-			index += (pnumStr[i] - zeroVal)
-		Next
-		If i = numArgLen Then
-			dim numVarArgs As ULong = argtb->count - 1
-			if(index < numVarArgs) then
-				var argString = hMacro_getArgZ( argtb, 1 )
-				dim varArgs() as string
+		if( hStr2long( varstr, index ) ) then
+			if( index >= 0 ) then
+				dim numVarArgs As ULong = argtb->count - 1
+				if(index < numVarArgs) then
+					var argString = hMacro_getArgZ( argtb, 1 )
+					dim varArgs() as string
 
-				if( hStr2Args( argString, varArgs() ) > 0 ) then
-					res = varArgs(index)
+					if( hStr2Args( argString, varArgs() ) > 0 ) then
+						res = varArgs(index)
+					end if
+
+					ZStrFree(argString)
 				end if
-
-				ZStrFree(argString)
+			else
+				'' expected positive
+				*errnum = FB_ERRMSG_SYNTAXERROR
 			end if
-
-		else '' NUMARG isn't a number
+		else
+			'' NUMARG isn't a number
 			*errnum = FB_ERRMSG_SYNTAXERROR
 		end if
 
@@ -561,7 +644,7 @@ private function hDefArgExtract_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum
 
 end function
 
-private function hDefArgLeft_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as string
+private function hDefArgLeft_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as string
 
 	'' __FB_ARG_LEFTTOF__( ARG, SEP [, RET = ""] )
 
@@ -607,7 +690,7 @@ private function hDefArgLeft_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as
 
 end function
 
-private function hDefArgRight_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as string
+private function hDefArgRight_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as string
 
 	'' __FB_ARG_RIGHTOF__( ARG, SEP [, RET = ""] )
 
@@ -652,7 +735,7 @@ private function hDefArgRight_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum a
 
 end function
 
-private function hDefJoinZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as string
+private function hDefJoinZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as string
 
 	'' __FB_JOIN__( L, R )
 
@@ -673,7 +756,7 @@ private function hDefJoinZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as i
 
 end function
 
-private function hDefJoinW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as wstring ptr
+private function hDefJoinW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as wstring ptr
 
 	'' __FB_JOIN__( L, R )
 
@@ -694,7 +777,7 @@ private function hDefJoinW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as i
 
 end function
 
-private function hDefQuoteZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as string
+private function hDefQuoteZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as string
 
 	'' __FB_QUOTE__( arg )
 
@@ -717,7 +800,7 @@ private function hDefQuoteZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as 
 
 end function
 
-private function hDefQuoteW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as wstring ptr
+private function hDefQuoteW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as wstring ptr
 
 	'' __FB_QUOTE__( arg )
 
@@ -741,7 +824,7 @@ private function hDefQuoteW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as 
 
 end function
 
-private function hDefUnquoteZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as string
+private function hDefUnquoteZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as string
 
 	'' __FB_UNQUOTE__( arg )
 
@@ -775,7 +858,7 @@ private function hDefUnquoteZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum a
 
 end function
 
-private function hDefUnquoteW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr) as wstring ptr
+private function hDefUnquoteW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as wstring ptr
 
 	'' __FB_UNQUOTE__( arg )
 
@@ -818,7 +901,7 @@ private function hDefEvalZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as i
 	'' so, if we do get here, just pass the argument back as-is
 
 	var arg = hMacro_getArgZ( argtb, 0 )
-	var res = hMacro_EvalZ( arg )
+	var res = hMacro_EvalZ( arg, errnum )
 
 	ZstrFree(arg)
 
@@ -835,12 +918,137 @@ private function hDefEvalW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as i
 
 	var arg = hMacro_getArgW( argtb, 0 )
 	static as DWSTRING res
-	DWstrAssign( res, hMacro_EvalW( arg ) )
+	DWstrAssign( res, hMacro_EvalW( arg, errnum ) )
 
 	function = res.data
 
 end function
 
+private function hDefIifZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as string
+
+	'' __FB_IIF__( CMPEXPR, TEXPR, FEXPR )
+
+	var res = ""
+	var cexpr = hMacro_getArgZ( argtb, 0 )  '' comparison
+	var texpr = hMacro_getArgZ( argtb, 1 )  '' true-expression
+	var fexpr = hMacro_getArgZ( argtb, 2 )  '' false-expression
+
+	if( (cexpr <> NULL) and (texpr <> NULL) and (fexpr <> NULL) ) then
+		dim as string varstr = hMacro_EvalZ( cexpr, errnum )
+		dim as boolean value = cbool( varstr )
+		res = iif( cbool( varstr ), *texpr, *fexpr )
+	else
+		*errnum = FB_ERRMSG_ARGCNTMISMATCH
+	end if
+
+	ZstrFree(fexpr)
+	ZstrFree(texpr)
+	ZstrFree(cexpr)
+
+	function =  res
+
+end function
+
+private function hDefIifW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as wstring ptr
+
+	'' __FB_IIF__( CMPEXPR, TEXPR, FEXPR )
+
+	static res as DWSTRING
+	static wvarstr as DWSTRING
+	var cexpr = hMacro_getArgW( argtb, 0 )  '' comparison
+	var texpr = hMacro_getArgW( argtb, 1 )  '' true-expression
+	var fexpr = hMacro_getArgW( argtb, 2 )  '' false-expression
+
+	if( (cexpr <> NULL) and (texpr <> NULL) and (fexpr <> NULL) ) then
+		dim as long value = 0
+		dim as string varstr
+		DWstrAssign( wvarstr, hMacro_EvalW( cexpr, errnum ) )
+		varstr = str( wvarstr.data )
+		DWstrAssign( res, iif( cbool( varstr ), *texpr, *fexpr ) )
+	else
+		*errnum = FB_ERRMSG_ARGCNTMISMATCH
+	end if
+
+	function = res.data
+
+end function
+
+private function hDefQuerySymZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as string
+
+	'' __FB_QUERY_SYMBOL__( WHAT, SYM )
+
+	var res = ""
+
+	if( env.includerec >= FB_MAXINCRECLEVEL ) then
+		*errnum = FB_ERRMSG_RECLEVELTOODEEP
+		return res
+	end if
+
+	var wexpr = hMacro_getArgZ( argtb, 0 )  '' what to look for
+	var sexpr = hMacro_getArgZ( argtb, 1 )  '' symbol to look up
+
+	if( (wexpr <> NULL) and (sexpr <> NULL) ) then
+
+		dim as string whatstr = hMacro_EvalZ( wexpr, errnum )
+		dim as long whatvalue = clng( whatstr )
+
+		if( hStr2long( whatstr, whatvalue ) ) then
+			dim as integer dtype, is_fixlenstr
+			dim as longint lgt
+			dim as FBSYMBOL ptr subtype
+			dim as FBSYMBOL ptr sym
+			var errmsg = FB_ERRMSG_OK
+
+			'' create a lightweight context push
+			lexPushCtx()
+			lexInit( FALSE, TRUE )
+
+			'' prevent cExpression from writing to .pp.bas file
+			lex.ctx->reclevel += 1
+
+			DZstrAssign( lex.ctx->deftext, *sexpr )
+			lex.ctx->defptr = lex.ctx->deftext.data
+			lex.ctx->deflen += len( *sexpr )
+
+			cTypeOf( dtype, subtype, lgt, is_fixlenstr, sym )
+
+			select case whatvalue
+			case 0 '' dtype
+				res = str( dtype )
+			case 1 '' data class
+				res = str( typeGetClass( dtype ) )
+			case 2 '' symb class
+				if( sym ) then
+					res = str( symbGetClass( sym ) )
+				elseif( subtype ) then
+					res = str( symbGetClass( subtype ) )
+				else
+					res = str( 0 )
+				end if
+			case else
+				*errnum = FB_ERRMSG_SYNTAXERROR
+				res = str( 0 )
+			end select
+
+			lex.ctx->reclevel -= 1
+
+			lexPopCtx()
+
+		else
+			'' NUMARG isn't a number
+			*errnum = FB_ERRMSG_SYNTAXERROR
+		end if
+
+	else
+		*errnum = FB_ERRMSG_ARGCNTMISMATCH
+	end if
+
+	ZstrFree(wexpr)
+	ZstrFree(sexpr)
+
+	function =  res
+
+end function
 
 '' Intrinsic #defines which are always defined
 dim shared defTb(0 to ...) as SYMBDEF => _
@@ -907,7 +1115,9 @@ dim shared macroTb(0 to ...) as SYMBMACRO => _
 	(@"__FB_JOIN__"           , 0                       , @hDefJoinZ_cb       , @hDefJoinW_cb        , 2, { (@"L"), (@"R") } ), _
 	(@"__FB_QUOTE__"          , 0                       , @hDefQuoteZ_cb      , @hDefQuoteW_cb       , 1, { (@"ARG") } ), _
 	(@"__FB_UNQUOTE__"        , 0                       , @hDefUnquoteZ_cb    , @hDefUnquoteW_cb     , 1, { (@"ARG") } ), _
-	(@"__FB_EVAL__"           , 0                       , @hDefEvalZ_cb       , @hDefEvalW_cb        , 1, { (@"ARG") } ) _
+	(@"__FB_EVAL__"           , 0                       , @hDefEvalZ_cb       , @hDefEvalW_cb        , 1, { (@"ARG") } ), _
+	(@"__FB_IIF__"            , 0                       , @hDefIifZ_cb        , @hDefIifW_cb         , 3, { (@"CMPEXPR"), (@"TEXPR"), (@"FEXPR") } ), _
+	(@"__FB_QUERY_SYMBOL__"   , 0                       , @hDefQuerySymZ_cb   , NULL                 , 2, { (@"WHAT"), (@"SYM") } ) _
 }
 
 sub symbDefineInit _
@@ -933,7 +1143,7 @@ sub symbDefineInit _
 		end if
 
 		symbAddDefine( defTb(i).name, value, len( value ), _
-				 FALSE, defTb(i).proc, defTb(i).flags )
+			FALSE, defTb(i).proc, defTb(i).flags )
 	next
 
 	'' Add __FB_<target>__ define
@@ -1036,11 +1246,11 @@ function symbAddDefine _
 
 	'' allocate new node (always on global hash, ns' won't work in lexer)
 	sym = symbNewSymbol( FB_SYMBOPT_DOHASH, _
-						 NULL, _
-						 NULL, @symbGetGlobalHashTb( ), _
-						 FB_SYMBCLASS_DEFINE, _
-						 symbol, NULL, _
-						 FB_DATATYPE_CHAR, NULL, FB_SYMBATTRIB_NONE, FB_PROCATTRIB_NONE )
+		NULL, _
+		NULL, @symbGetGlobalHashTb( ), _
+		FB_SYMBCLASS_DEFINE, _
+		symbol, NULL, _
+		FB_DATATYPE_CHAR, NULL, FB_SYMBATTRIB_NONE, FB_PROCATTRIB_NONE )
 	if( sym = NULL ) then
 		exit function
 	end if
@@ -1075,11 +1285,11 @@ function symbAddDefineW _
 
 	'' allocate new node (always on global hash, ns' won't work in lexer)
 	sym = symbNewSymbol( FB_SYMBOPT_DOHASH, _
-						 NULL, _
-						 NULL, @symbGetGlobalHashTb( ), _
-						 FB_SYMBCLASS_DEFINE, _
-						 symbol, NULL, _
-						 FB_DATATYPE_WCHAR, NULL, FB_SYMBATTRIB_NONE, FB_PROCATTRIB_NONE )
+		NULL, _
+		NULL, @symbGetGlobalHashTb( ), _
+		FB_SYMBCLASS_DEFINE, _
+		symbol, NULL, _
+		FB_DATATYPE_WCHAR, NULL, FB_SYMBATTRIB_NONE, FB_PROCATTRIB_NONE )
 	if( sym = NULL ) then
 		exit function
 	end if
@@ -1113,11 +1323,11 @@ function symbAddDefineMacro _
 
 	'' allocate new node (always on global hash, ns' won't work in lexer)
 	sym = symbNewSymbol( FB_SYMBOPT_DOHASH, _
-						 NULL, _
-						 NULL, @symbGetGlobalHashTb( ), _
-						 FB_SYMBCLASS_DEFINE, _
-						 symbol, NULL, _
-						 FB_DATATYPE_INVALID, NULL, FB_SYMBATTRIB_NONE, FB_PROCATTRIB_NONE )
+		NULL, _
+		NULL, @symbGetGlobalHashTb( ), _
+		FB_SYMBCLASS_DEFINE, _
+		symbol, NULL, _
+		FB_DATATYPE_INVALID, NULL, FB_SYMBATTRIB_NONE, FB_PROCATTRIB_NONE )
 	if( sym = NULL ) then
 		exit function
 	end if

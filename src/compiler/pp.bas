@@ -10,10 +10,10 @@
 #include once "pp.bi"
 
 #define LEX_FLAGS (LEXCHECK_NOWHITESPC or _
-				   LEXCHECK_NOSUFFIX or _
-				   LEXCHECK_NODEFINE or _
-				   LEXCHECK_NOQUOTES or _
-				   LEXCHECK_NOSYMBOL)
+	LEXCHECK_NOSUFFIX or _
+	LEXCHECK_NODEFINE or _
+	LEXCHECK_NOQUOTES or _
+	LEXCHECK_NOSYMBOL)
 
 type SYMBKWD
 	name            as const zstring ptr
@@ -28,10 +28,19 @@ declare sub ppLine()
 declare sub ppLang()
 declare sub ppCmdline()
 
+#if __FB_DEBUG__
+
 declare sub ppDumpTree _
 	( _
 		byval optimize as integer = FALSE _
 	)
+
+declare sub ppLookup _
+	( _
+	)
+
+#endif
+
 
 '' globals
 	dim shared as PP_CTX pp
@@ -59,9 +68,10 @@ const SYMB_MAXKEYWORDS = 24
 		(@"LINE"    , FB_TK_PP_LINE     ), _
 		(@"LANG"    , FB_TK_PP_LANG     ), _
 		(@"ASSERT"  , FB_TK_PP_ASSERT   ), _
+		(@"CMDLINE" , FB_TK_PP_CMDLINE  ), _
 		(@"DUMP"    , FB_TK_PP_DUMP     ), _
 		(@"ODUMP"   , FB_TK_PP_ODUMP    ), _
-		(@"CMDLINE" , FB_TK_PP_CMDLINE  ), _
+		(@"LOOKUP"  , FB_TK_PP_LOOKUP   ), _
 		(NULL) _
 	}
 
@@ -84,9 +94,9 @@ sub ppInit( )
 		end if
 
 		kwdTb(i).sym = symbAddKeyword( kwdTb(i).name, _
-									   kwdTb(i).id, _
-									   FB_TKCLASS_KEYWORD, _
-									   @pp.kwdns.nspc.ns.hashtb )
+			kwdTb(i).id, _
+			FB_TKCLASS_KEYWORD, _
+			@pp.kwdns.nspc.ns.hashtb )
 		if( kwdTb(i).sym = NULL ) then
 			exit sub
 		end if
@@ -200,6 +210,7 @@ sub ppParse( )
 		dim as FBSYMCHAIN ptr chain_ = any
 		dim as FBSYMBOL ptr base_parent = any
 
+		'' #undef
 		lexSkipToken( LEXCHECK_NODEFINE or LEXCHECK_POST_SUFFIX )
 
 		chain_ = cIdentifier( base_parent, FB_IDOPT_NONE )
@@ -251,13 +262,30 @@ sub ppParse( )
 
 	'' DUMP Expression
 	case FB_TK_PP_DUMP
-		lexSkipToken( LEXCHECK_POST_SUFFIX )
-		ppDumpTree( FALSE )
+		#if __FB_DEBUG__
+			lexSkipToken( LEXCHECK_POST_SUFFIX )
+			ppDumpTree( FALSE )
+		#else
+			errReport( FB_ERRMSG_SYNTAXERROR )
+		#endif
 
 	'' ODUMP Expression
 	case FB_TK_PP_ODUMP
-		lexSkipToken( LEXCHECK_NODEFINE or LEXCHECK_POST_SUFFIX )
-		ppDumpTree( TRUE )
+		#if __FB_DEBUG__
+			lexSkipToken( LEXCHECK_NODEFINE or LEXCHECK_POST_SUFFIX )
+			ppDumpTree( TRUE )
+		#else
+			errReport( FB_ERRMSG_SYNTAXERROR )
+		#endif
+
+	'' LOOKUP Symbol
+	case FB_TK_PP_LOOKUP
+		#if __FB_DEBUG__
+			lexSkipToken( LEXCHECK_NODEFINE or LEXCHECK_POST_SUFFIX )
+			ppLookup( )
+		#else
+			errReport( FB_ERRMSG_SYNTAXERROR )
+		#endif
 
 	'' PRINT LITERAL*
 	case FB_TK_PP_PRINT
@@ -436,6 +464,8 @@ private sub ppLang( )
 	lexSkipToken( )
 end sub
 
+#if __FB_DEBUG__
+
 '':::::
 '' ppDump      =   '#'DUMP|ODUMP Expression
 ''
@@ -462,6 +492,20 @@ private sub ppDumpTree _
 	end if
 
 end sub
+
+'':::::
+'' ppLookup    =   '#'LOOKUP name
+''
+private sub ppLookup _
+	( _
+	)
+
+	symbDumpLookup( lexGetText( ) )
+	lexSkipToken( )
+
+end sub
+
+#endif
 
 '':::::
 private sub hRtrimMacroText _
@@ -538,7 +582,7 @@ function ppReadLiteral _
 			end if
 
 			do
-				lexSkipToken( LEX_FLAGS )
+				lexSkipToken( LEX_FLAGS or LEXCHECK_NOLINECONT )
 
 				select case lexGetToken( LEX_FLAGS )
 				case FB_TK_EOL, FB_TK_EOF
@@ -693,7 +737,7 @@ function ppReadLiteralW _
 			end if
 
 			do
-				lexSkipToken( LEX_FLAGS )
+				lexSkipToken( LEX_FLAGS or LEXCHECK_NOLINECONT )
 
 				select case lexGetToken( LEX_FLAGS )
 				case FB_TK_EOL, FB_TK_EOF
@@ -826,6 +870,14 @@ declare sub fbcParseArgsFromString _
 ''
 private sub ppCmdline( )
 	dim as zstring ptr args = any
+
+	'' Prepocessor is done parsing? warn that statement is ignored
+	if( parser.stage > 0 ) then
+		errReportWarn( FB_WARNINGMSG_CMDLINEIGNORED )
+		'' error recovery: skip
+		lexSkipToken( )
+		exit sub
+	end if
 
 	if( lexGetClass( ) <> FB_TKCLASS_STRLITERAL ) then
 		errReport( FB_ERRMSG_SYNTAXERROR )

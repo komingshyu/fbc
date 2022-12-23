@@ -9,18 +9,15 @@
 	#define DOTEST
 	#define DOFUNCS
 #else
-	'' structures returned by value from c++
-	'' needs some work on arm targets (bugs!)
-	#if not defined( __FB_ARM__ )
+	#define DOTEST
+
+	'' some structures returned by value from g++
+	'' not working for several targets.  Just disable
+	'' for now.  It's likely related to passing
+	'' structs in registers and size of the struct.
+	#if defined( __FB_WIN32__ )
 		#define DOFUNCS
 	#endif
-#endif
-
-'' !!! TODO !!! this default should be handled in fbc
-#if defined(__FB_WIN32__) and not defined(__FB_64BIT__)
-	#define thiscall __thiscall
-#else
-	#define thiscall
 #endif
 
 #ifndef NULL
@@ -47,15 +44,15 @@ extern "c++"
 	type UDT
 		value as long
 
-		declare constructor thiscall ()
-		declare constructor thiscall ( byref rhs as const UDT )
-		declare constructor thiscall ( byref rhs as const long )
-		declare destructor thiscall ()
-		declare sub method thiscall ( byref rhs as const long )
-		declare operator let thiscall ( byref rhs as const UDT )
+		declare constructor ()
+		declare constructor ( byref rhs as const UDT )
+		declare constructor ( byref rhs as const long )
+		declare destructor ()
+		declare sub method ( byref rhs as const long )
+		declare operator let ( byref rhs as const UDT )
 		'' !!! TODO !!! member operators
-		'' !!! TODO !!! declare operator + thiscall ( byref rhs as const long ) as UDT
-		'' !!! TODO !!! declare operator - thiscall ( byref rhs as const long ) as UDT
+		'' !!! TODO !!! declare operator + ( byref rhs as const long ) as UDT
+		'' !!! TODO !!! declare operator - ( byref rhs as const long ) as UDT
 
 	end type
 

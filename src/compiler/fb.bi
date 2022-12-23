@@ -2,7 +2,7 @@
 #define __FB_BI__
 
 const FB_VER_MAJOR  = "1"
-const FB_VER_MINOR  = "09"
+const FB_VER_MINOR  = "10"
 const FB_VER_PATCH  = "0"
 const FB_VERSION    = FB_VER_MAJOR + "." + FB_VER_MINOR + "." + FB_VER_PATCH
 const FB_BUILD_DATE = __DATE__
@@ -74,6 +74,7 @@ enum FB_COMPOPT
 	'' parser -lang mode
 	FB_COMPOPT_LANG                 '' FB_LANG_*: lang compatibility
 	FB_COMPOPT_FORCELANG            '' boolean: TRUE if -forcelang was specified
+	FB_COMPOPT_RESTART_LANG         '' FB_LANG_*: lang compatibility after restart (due change by #cmdline)
 
 	'' debugging/error checking
 	FB_COMPOPT_DEBUG                '' boolean: enable __FB_DEBUG__ (affects code generation)
@@ -84,6 +85,7 @@ enum FB_COMPOPT
 	FB_COMPOPT_EXTRAERRCHECK        '' boolean: NULL pointer/array bounds checks
 	FB_COMPOPT_ERRLOCATION          '' boolean: enable reporting of error location
 	FB_COMPOPT_NULLPTRCHECK         '' boolean: NULL pointer
+	FB_COMPOPT_UNWINDINFO           '' boolean: enable call stack unwind information
 	FB_COMPOPT_ARRAYBOUNDCHECK      '' boolean: array bounds checks
 	FB_COMPOPT_PROFILE              '' boolean: -profile
 
@@ -97,6 +99,7 @@ enum FB_COMPOPT
 	FB_COMPOPT_GOSUBSETJMP          '' boolean: implement GOSUB using setjmp/longjump?
 	FB_COMPOPT_VALISTASPTR          '' boolean: implement CVA_* using pointer expressions only?
 	FB_COMPOPT_NOTHISCALL           '' boolean: don't use 'thiscall' calling convention?
+	FB_COMPOPT_NOFASTCALL           '' boolean: don't use 'fastcall' calling convention?
 	FB_COMPOPT_FBRT                 '' boolean: we are building or linking the fbrt library
 	FB_COMPOPT_EXPORT               '' boolean: export all symbols declared as EXPORT?
 	FB_COMPOPT_MSBITFIELDS          '' boolean: use M$'s bitfields packing?
@@ -108,6 +111,7 @@ enum FB_COMPOPT
 	FB_COMPOPT_SHOWINCLUDES         '' boolean: -showincludes
 	FB_COMPOPT_MODEVIEW             ''__FB_GUI__
 	FB_COMPOPT_NOCMDLINE            '' boolean: -z nocmdline, disable #cmdline directives
+	FB_COMPOPT_NORETURNINFLTS       '' boolean: -z no-returninflts, disable returning some structs in floating point registers
 
 	FB_COMPOPTIONS
 end enum
@@ -132,10 +136,11 @@ enum FB_PDCHECK
 	FB_PDCHECK_CASTFUNCPTR  = &h00000040
 	FB_PDCHECK_CONSTNESS    = &h00000080
 	FB_PDCHECK_SUFFIX       = &h00000100
+	FB_PDCHECK_ERROR        = &h00000200  '' handle warnings as errors
 
 	FB_PDCHECK_ALL          = &hffffffff
 
-	FB_PDCHECK_DEFAULT      = FB_PDCHECK_ALL xor ( FB_PDCHECK_NEXTVAR or FB_PDCHECK_SIGNEDNESS or FB_PDCHECK_CASTFUNCPTR or FB_PDCHECK_CONSTNESS )
+	FB_PDCHECK_DEFAULT      = FB_PDCHECK_ALL xor ( FB_PDCHECK_NEXTVAR or FB_PDCHECK_SIGNEDNESS or FB_PDCHECK_CASTFUNCPTR or FB_PDCHECK_CONSTNESS or FB_PDCHECK_ERROR )
 end enum
 
 '' cpu types
@@ -287,6 +292,7 @@ type FBCMMLINEOPT
 	errlocation     as integer              '' enable reporting of error location (default = false)
 	arrayboundchk   as integer              '' enable array bounds checks?
 	nullptrchk      as integer              '' enable NULL pointer checks?
+	unwindinfo      as integer              '' enable call stack unwind information
 	profile         as integer              '' build profiling code (default = false)
 
 	'' error/warning reporting behaviour
@@ -299,6 +305,7 @@ type FBCMMLINEOPT
 	gosubsetjmp     as integer              '' implement GOSUB using setjmp/longjump? (default = false)
 	valistasptr     as integer              '' implement CVA_* using pointer expressions only?
 	nothiscall      as integer              '' do not use thiscall calling convention (default = false)
+	nofastcall      as integer              '' do not use fastcall calling convention (default = false)
 	fbrt            as integer              '' we are building or linking fbrt (default = false)
 	export          as integer              '' export all symbols declared as EXPORT (default = true)
 	msbitfields     as integer              '' use M$'s bitfields packing
@@ -310,6 +317,7 @@ type FBCMMLINEOPT
 	showincludes    as integer
 	modeview        as FB_MODEVIEW
 	nocmdline       as integer              '' dissallow #cmdline directive? (default = false)
+	noreturninflts  as integer              '' disable returning some structs in floating point registers
 end type
 
 '' features allowed in the selected language
@@ -392,7 +400,11 @@ const FB_DEFAULT_TARGET     = FB_COMPTARGET_NETBSD
 	#define __FB_X86__
 #endif
 
+#ifdef __FB_DOS__
 const FB_DEFAULT_CPUTYPE_X86     = FB_CPUTYPE_486
+#else
+const FB_DEFAULT_CPUTYPE_X86     = FB_CPUTYPE_686
+#endif
 const FB_DEFAULT_CPUTYPE_X86_64  = FB_CPUTYPE_X86_64
 const FB_DEFAULT_CPUTYPE_ARM     = FB_CPUTYPE_ARMV7A
 const FB_DEFAULT_CPUTYPE_AARCH64 = FB_CPUTYPE_AARCH64
@@ -445,10 +457,14 @@ enum FB_RESTART_FLAGS
 	FB_RESTART_NONE               '' no restart required
 	FB_RESTART_PARSER_LANG    = 1 '' parser restart needed due to #lang directive
 	FB_RESTART_PARSER_CMDLINE = 2 '' parser restart needed due to #cmdline directive
-	FB_RESTART_FBC_CMDLINE    = 4 '' main fbc entry restart needed due to #cmdline directive
+	FB_RESTART_PARSER_MT      = 4 '' parser restart needed due to threading functions (mt)
+	FB_RESTART_FBC_CMDLINE    = 8 '' main fbc entry restart needed due to #cmdline directive
 
 	FB_RESTART_CMDLINE = FB_RESTART_PARSER_CMDLINE or FB_RESTART_FBC_CMDLINE
-	FB_RESTART_PARSER  = FB_RESTART_PARSER_LANG or FB_RESTART_PARSER_CMDLINE
+
+	FB_RESTART_PARSER  = FB_RESTART_PARSER_LANG _
+	                     or FB_RESTART_PARSER_CMDLINE _
+	                     or FB_RESTART_PARSER_MT
 end enum
 
 declare sub fbInit _

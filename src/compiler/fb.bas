@@ -113,6 +113,7 @@ dim shared as FBTARGET targetinfo(0 to FB_COMPTARGETS-1) = _
 		FB_FUNCMODE_STDCALL, _  '' stdcall
 		0   or FB_TARGETOPT_EXPORT _
 			or FB_TARGETOPT_RETURNINREGS _
+			or FB_TARGETOPT_RETURNINFLTS _
 			or FB_TARGETOPT_COFF _
 	), _
 	( _
@@ -123,6 +124,7 @@ dim shared as FBTARGET targetinfo(0 to FB_COMPTARGETS-1) = _
 		0   or FB_TARGETOPT_UNIX _
 			or FB_TARGETOPT_EXPORT _
 			or FB_TARGETOPT_RETURNINREGS _
+			or FB_TARGETOPT_RETURNINFLTS _
 			or FB_TARGETOPT_COFF _
 	), _
 	( _
@@ -149,6 +151,7 @@ dim shared as FBTARGET targetinfo(0 to FB_COMPTARGETS-1) = _
 		FB_FUNCMODE_STDCALL, _
 		FB_FUNCMODE_STDCALL, _
 		0   or FB_TARGETOPT_RETURNINREGS _
+			or FB_TARGETOPT_RETURNINFLTS _
 			or FB_TARGETOPT_COFF _
 	), _
 	( _
@@ -159,6 +162,7 @@ dim shared as FBTARGET targetinfo(0 to FB_COMPTARGETS-1) = _
 		0   or FB_TARGETOPT_UNIX _
 			or FB_TARGETOPT_CALLEEPOPSHIDDENPTR _
 			or FB_TARGETOPT_RETURNINREGS _
+			or FB_TARGETOPT_RETURNINFLTS _
 			or FB_TARGETOPT_ELF _
 	), _
 	( _
@@ -169,6 +173,7 @@ dim shared as FBTARGET targetinfo(0 to FB_COMPTARGETS-1) = _
 		0   or FB_TARGETOPT_UNIX _
 			or FB_TARGETOPT_CALLEEPOPSHIDDENPTR _
 			or FB_TARGETOPT_RETURNINREGS _
+			or FB_TARGETOPT_RETURNINFLTS _
 			or FB_TARGETOPT_ELF _
 	), _
 	( _
@@ -179,6 +184,7 @@ dim shared as FBTARGET targetinfo(0 to FB_COMPTARGETS-1) = _
 		0   or FB_TARGETOPT_UNIX _
 			or FB_TARGETOPT_CALLEEPOPSHIDDENPTR _
 			or FB_TARGETOPT_RETURNINREGS _
+			or FB_TARGETOPT_RETURNINFLTS _
 			or FB_TARGETOPT_ELF _
 	), _
 	( _
@@ -189,6 +195,7 @@ dim shared as FBTARGET targetinfo(0 to FB_COMPTARGETS-1) = _
 		0   or FB_TARGETOPT_UNIX _
 			or FB_TARGETOPT_CALLEEPOPSHIDDENPTR _
 			or FB_TARGETOPT_RETURNINREGS _
+			or FB_TARGETOPT_RETURNINFLTS _
 			or FB_TARGETOPT_ELF _
 	), _
 	( _
@@ -210,6 +217,7 @@ dim shared as FBTARGET targetinfo(0 to FB_COMPTARGETS-1) = _
 		0   or FB_TARGETOPT_UNIX _
 			or FB_TARGETOPT_CALLEEPOPSHIDDENPTR _
 			or FB_TARGETOPT_RETURNINREGS _
+			or FB_TARGETOPT_RETURNINFLTS _
 			or FB_TARGETOPT_ELF _
 	), _
 	( _
@@ -220,6 +228,7 @@ dim shared as FBTARGET targetinfo(0 to FB_COMPTARGETS-1) = _
 		0   or FB_TARGETOPT_UNIX _
 			or FB_TARGETOPT_CALLEEPOPSHIDDENPTR _
 			or FB_TARGETOPT_RETURNINREGS _
+			or FB_TARGETOPT_RETURNINFLTS _
 	) _
 }
 
@@ -386,12 +395,15 @@ sub fbInit _
 	strsetInit( @env.libpaths, FB_INITLIBNODES \ 4 )
 
 	'' when starting a compile, reset the restart requests
-	'' env.restart_status preserves state from previous runs 
+	'' env.restart_status preserves state from previous runs
 	''     and would have been initialized to 0 (FB_RESTART_NONE)
+	''     but we need to clear the PARSER_LANG status because
+	''     #lang directives should only apply to current module
 	'' env.restart_count is preserved between runs (passes) so don't
 	''    re-initialize it here.
 	env.restart_request = FB_RESTART_NONE
 	env.restart_action = FB_RESTART_NONE
+	env.restart_status and= not (FB_RESTART_PARSER_LANG or FB_RESTART_PARSER_MT)
 
 	redim infileTb( 0 to FB_MAXINCRECLEVEL-1 )
 
@@ -512,6 +524,9 @@ end sub
 
 private sub hUpdateTargetOptions( )
 	env.target = targetinfo(env.clopt.target)
+	if( env.clopt.noreturninflts ) then
+		env.target.options and= not FB_TARGETOPT_RETURNINFLTS
+	end if
 end sub
 
 sub fbGlobalInit()
@@ -543,6 +558,7 @@ sub fbGlobalInit()
 	env.clopt.errlocation   = FALSE
 	env.clopt.arrayboundchk = FALSE
 	env.clopt.nullptrchk    = FALSE
+	env.clopt.unwindinfo    = FALSE
 	env.clopt.resumeerr     = FALSE
 	env.clopt.profile       = FALSE
 
@@ -561,10 +577,14 @@ sub fbGlobalInit()
 	env.clopt.objinfo       = TRUE
 	env.clopt.showincludes  = FALSE
 	env.clopt.modeview      = FB_DEFAULT_MODEVIEW
+	env.clopt.nocmdline     = FALSE
+	env.clopt.noreturninflts= FALSE
 
 	env.restart_request     = FB_RESTART_NONE
 	env.restart_action      = FB_RESTART_NONE
 	env.restart_status      = FB_RESTART_NONE
+	env.restart_lang        = FB_LANG_INVALID
+	env.restart_count       = 0
 
 	env.module_count        = 0
 
@@ -614,6 +634,8 @@ sub fbSetOption( byval opt as integer, byval value as integer )
 		hUpdateLangOptions( )
 	case FB_COMPOPT_FORCELANG
 		env.clopt.forcelang = value
+	case FB_COMPOPT_RESTART_LANG
+		env.restart_lang = value
 
 	case FB_COMPOPT_DEBUG
 		env.clopt.debug = value
@@ -633,6 +655,8 @@ sub fbSetOption( byval opt as integer, byval value as integer )
 		env.clopt.arrayboundchk = value
 	case FB_COMPOPT_NULLPTRCHECK
 		env.clopt.nullptrchk = value
+	case FB_COMPOPT_UNWINDINFO
+		env.clopt.unwindinfo = value
 	case FB_COMPOPT_PROFILE
 		env.clopt.profile = value
 
@@ -651,6 +675,8 @@ sub fbSetOption( byval opt as integer, byval value as integer )
 		env.clopt.valistasptr = value
 	case FB_COMPOPT_NOTHISCALL
 		env.clopt.nothiscall = value
+	case FB_COMPOPT_NOFASTCALL
+		env.clopt.nofastcall = value
 	case FB_COMPOPT_FBRT
 		env.clopt.fbrt = value
 	case FB_COMPOPT_EXPORT
@@ -685,6 +711,8 @@ sub fbSetOption( byval opt as integer, byval value as integer )
 		env.clopt.modeview = value
 	case FB_COMPOPT_NOCMDLINE
 		env.clopt.nocmdline = value
+	case FB_COMPOPT_NORETURNINFLTS
+		env.clopt.noreturninflts = value
 	end select
 end sub
 
@@ -716,6 +744,8 @@ function fbGetOption( byval opt as integer ) as integer
 		function = env.clopt.lang
 	case FB_COMPOPT_FORCELANG
 		function = env.clopt.forcelang
+	case FB_COMPOPT_RESTART_LANG
+		function = env.restart_lang
 
 	case FB_COMPOPT_DEBUG
 		function = env.clopt.debug
@@ -735,6 +765,8 @@ function fbGetOption( byval opt as integer ) as integer
 		function = env.clopt.arrayboundchk
 	case FB_COMPOPT_NULLPTRCHECK
 		function = env.clopt.nullptrchk
+	case FB_COMPOPT_UNWINDINFO
+		function = env.clopt.unwindinfo
 	case FB_COMPOPT_PROFILE
 		function = env.clopt.profile
 
@@ -753,6 +785,8 @@ function fbGetOption( byval opt as integer ) as integer
 		function = env.clopt.valistasptr
 	case FB_COMPOPT_NOTHISCALL
 		function = env.clopt.nothiscall
+	case FB_COMPOPT_NOFASTCALL
+		function = env.clopt.nofastcall
 	case FB_COMPOPT_FBRT
 		function = env.clopt.fbrt
 	case FB_COMPOPT_EXPORT
@@ -775,6 +809,8 @@ function fbGetOption( byval opt as integer ) as integer
 		function = env.clopt.modeview
 	case FB_COMPOPT_NOCMDLINE
 		function = env.clopt.nocmdline
+	case FB_COMPOPT_NORETURNINFLTS
+		function = env.clopt.noreturninflts
 
 	case else
 		function = 0
@@ -1061,6 +1097,25 @@ end function
 
 '' Used to add libs found during parsing (#inclib, Lib "...", rtl-* callbacks)
 sub fbAddLib(byval libname as zstring ptr)
+
+	'' gfx library?
+	if( *libname = "fbgfx?" ) then
+		'' Special handling for "fbgfx" and "fbgfxmt" because
+		'' depending on order of modules given on the cmd line
+		'' multithreading may have been set after fbgfx.bi was
+		'' included, and we can't have both libs passed to the
+		'' linker. We can end up linking to the non-threaded
+		'' version of fbgfx when we would expect the mt versoin
+		'' and the linker won't complain even when both versions
+		'' are passed.
+
+		'' Set the -gfx option to link to the gfx library
+		'' and the lib will be added in hAddDefaultLibs()
+		fbSetOption( FB_COMPOPT_GFX, TRUE )
+
+		exit sub
+	end if
+
 	strsetAdd(@env.libs, *libname, FALSE)
 end sub
 
@@ -1242,8 +1297,8 @@ sub fbCompile _
 
 	'' compiling only, not cross-compiling?
 	if( fbGetOption( FB_COMPOPT_OBJINFO ) and _
-	    (not fbIsCrossComp( )) and _
-	    (env.clopt.outtype = FB_OUTTYPE_OBJECT) ) then
+		(not fbIsCrossComp( )) and _
+		(env.clopt.outtype = FB_OUTTYPE_OBJECT) ) then
 		'' store libs, paths and cmd-line options in the obj
 		hEmitObjinfo( )
 	end if

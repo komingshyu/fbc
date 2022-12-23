@@ -1044,7 +1044,7 @@ private function hFrameBytesToAlloc _
 
 	dim as integer bytestoalloc, bytespushed = any
 
-		bytestoalloc = ((proc->proc.ext->stk.localmax - EMIT_LOCSTART) + 3) and (not 3)
+	bytestoalloc = ((proc->proc.ext->stk.localmax - EMIT_LOCSTART) + 3) and (not 3)
 
 	if( (env.target.options and FB_TARGETOPT_STACKALIGN16) <> 0 ) then
 
@@ -1070,6 +1070,53 @@ private function hFrameBytesToAlloc _
 	return bytestoalloc
 end function
 
+private sub hStoreRegisterArgument _
+	( _
+		byval param as FBSYMBOL ptr, _
+		byref src as string _
+	)
+
+	var operand = ""
+	var ofs = param->param.var->ofs
+
+	operand = "dword ptr [ebp"
+	if( ofs > 0 ) then
+		operand += "+"
+	end if
+	if( ofs <> 0 ) then
+		operand += str(ofs)
+	end if
+	operand += "]"
+
+	outp( "mov " + operand + ", " + src )
+
+end sub
+
+'':::::
+private sub hStoreRegisterArguments _
+	(  _
+		byval proc as FBSYMBOL ptr _
+	)
+
+	'' hCreateFrame() will be called after all
+	'' procAllocArgs were called, so we should
+	'' expect that offset for param variable
+	'' has been set-up and ready to be stored
+	'' with the register containing the argument
+
+	var param = symbGetProcHeadParam( proc )
+	while( param )
+		select case param->param.regnum
+		case 1 '' ECX
+			hStoreRegisterArgument( param, "ecx" )
+		case 2 '' EDX
+			hStoreRegisterArgument( param, "edx" )
+		end select
+		param = symbGetParamNext( param )
+	wend
+
+end sub
+
 '':::::
 '' Stack frames are skipped if possible (and not debug/profile build) or naked.
 '' In particular they can normally be skipped if the function has no arguments
@@ -1092,6 +1139,9 @@ private sub hCreateFrame _
 
 	dim as integer bytestoalloc, bytestoclear, bytespushed
 	dim as zstring ptr lprof
+	dim as integer hasunwind = any
+	hasunwind = ( env.clopt.target = FB_COMPTARGET_LINUX ) andalso _
+		fbGetOption( FB_COMPOPT_UNWINDINFO )
 
 	' No frame for naked functions
 	if( symbIsNaked( proc ) = FALSE ) then
@@ -1106,7 +1156,16 @@ private sub hCreateFrame _
 			env.clopt.profile ) then
 
 			hPUSH( "ebp" )
+			if( hasunwind ) then
+				'' stack frame now start at esp + 8
+				outp( ".cfi_def_cfa_offset 8" )
+				'' and that's where old ebp is
+				outp( ".cfi_offset 5, -8" )
+			end if
+
 			outp( "mov ebp, esp" )
+			'' we're using ebp to access stack variables
+			if( hasunwind ) then outp( ".cfi_def_cfa_register 5" )
 
 			'' esp is now at -EMIT_ARGSTART modulo alignment if the caller correctly
 			'' aligned the stack; but don't make that assumption for main()
@@ -1145,6 +1204,8 @@ private sub hCreateFrame _
 			hPUSH( "edi" )
 		end if
 
+		hStoreRegisterArguments( proc )
+
 	end if
 
 	''
@@ -1163,10 +1224,15 @@ private sub hDestroyFrame _
 		byval bytestopop as integer _
 	) static
 
+	dim as integer islinux = any
+	islinux = ( env.clopt.target = FB_COMPTARGET_LINUX )
 	' don't do anything for naked functions, except the .size at the end
 	if( symbIsNaked( proc ) = FALSE ) then
 
 		dim as integer bytestoalloc
+		dim as integer hasunwind = any
+
+		hasunwind = islinux andalso fbGetOption( FB_COMPOPT_UNWINDINFO )
 
 		bytestoalloc = hFrameBytesToAlloc( proc )
 
@@ -1187,6 +1253,12 @@ private sub hDestroyFrame _
 			env.clopt.profile ) then
 			outp( "mov esp, ebp" )
 			hPOP( "ebp" )
+			if hasunwind then
+				'' ebp is restored
+				outp( ".cfi_restore 5" )
+				'' stack frame is back to esp + 4
+				outp( ".cfi_def_cfa 4, 4" )
+			end if
 		end if
 
 		if( bytestopop > 0 ) then
@@ -1197,7 +1269,7 @@ private sub hDestroyFrame _
 
 	end if
 
-	if( env.clopt.target = FB_COMPTARGET_LINUX ) then
+	if( islinux ) then
 		outEx( ".size " + *symbGetMangledName( proc ) + ", .-" + *symbGetMangledName( proc ) + NEWLINE )
 	end if
 
@@ -2145,19 +2217,26 @@ private sub _emitLOADF2L _
 
 		outp "sub esp, 8"
 		outp "mov dword ptr [esp], 0x5F000000" '' 2^63
-		outp "fcom dword ptr [esp]"
+		if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+			outp "fld dword ptr [esp]"
+			outp "fcomip"
+			hBRANCH( "jbe", label_geq )
 
-		if( iseaxfree ) then
-			outp "fnstsw ax"
-			outp "test ah, 1"
 		else
-			hPUSH( "eax" )
-			outp "fnstsw ax"
-			outp "test ah, 1"
-			hPOP( "eax" )
-		end if
+			outp "fcom dword ptr [esp]"
 
-		hBRANCH( "jz", label_geq )
+			if( iseaxfree ) then
+				outp "fnstsw ax"
+				outp "test ah, 1"
+			else
+				hPUSH( "eax" )
+				outp "fnstsw ax"
+				outp "test ah, 1"
+				hPOP( "eax" )
+			end if
+
+			hBRANCH( "jz", label_geq )
+		end if
 
 		'' if x < 2^63
 		outp "fistp qword ptr [esp]"
@@ -4227,7 +4306,6 @@ private sub hCMPI _
 
 end sub
 
-
 '':::::
 private sub hCMPF _
 	( _
@@ -4250,41 +4328,49 @@ private sub hCMPF _
 	else
 		lname = *symbGetMangledName( label )
 	end if
-
 	'' do comp
-	if( svreg->typ = IR_VREGTYPE_REG ) then
-		outp "fcompp"
+	if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+		''fcomi usable, faster
+		if( svreg->typ = IR_VREGTYPE_REG ) then
+			outp "fxch" ''in this case inverse order
+			outp "fcomip st, st(1)"
+			outp "fstp st(0)" ''pop register stack as fcomippp doesn't exist
+		else
+			ostr = "fld "+src
+			outp ostr
+			outp "fcomip st, st(1)"
+			outp "fstp st(0)" ''pop register stack as fcomippp doesn't exist
+		end if
 	else
-		'' can it be optimized to ftst?
-		if( typeGetClass( svreg->dtype ) = FB_DATACLASS_FPOINT ) then
+		if( svreg->typ = IR_VREGTYPE_REG ) then
+			outp "fcompp"
+		else
+			'' can it be optimized to ftst?
 			ostr = "fcomp " + src
 			outp ostr
-		else
-			ostr = "ficomp " + src
-			outp ostr
 		end if
-	end if
 
-	iseaxfree = hIsRegFree( FB_DATACLASS_INTEGER, EMIT_REG_EAX )
-	if( rvreg <> NULL ) then
-		iseaxfree = (rvreg->reg = EMIT_REG_EAX)
-	end if
+		iseaxfree = hIsRegFree( FB_DATACLASS_INTEGER, EMIT_REG_EAX )
+		if( rvreg <> NULL ) then
+			iseaxfree = (rvreg->reg = EMIT_REG_EAX)
+		end if
 
-	if( iseaxfree = FALSE ) then
-		hPUSH( "eax" )
-	end if
+		if( iseaxfree = FALSE ) then
+			hPUSH( "eax" )
+		end if
 
-	'' load fpu flags
-	outp "fnstsw ax"
-	if( len( *mask ) > 0 ) then
-		ostr = "test ah, " + *mask
-		outp ostr
-	else
-		outp "sahf"
-	end if
+		'' load fpu flags
+		outp "fnstsw ax"
+		if( len( *mask ) > 0 ) then
+			ostr = "test ah, " + *mask
+			outp ostr
+		else
+			outp "sahf"
+		end if
 
-	if( iseaxfree = FALSE ) then
-		hPOP( "eax" )
+		if( iseaxfree = FALSE ) then
+			hPOP( "eax" )
+		end if
 	end if
 
 	'' no result to be set? just branch
@@ -4390,8 +4476,6 @@ private sub _emitCGTI _
 
 end sub
 
-
-
 '':::::
 private sub _emitCGTF _
 	( _
@@ -4401,8 +4485,11 @@ private sub _emitCGTF _
 		byval svreg as IRVREG ptr _
 	) static
 
-	hCMPF( rvreg, label, "z", "0b01000001", dvreg, svreg )
-
+	if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+		hCMPF( rvreg, label, "b", "", dvreg, svreg )
+	else
+		hCMPF( rvreg, label, "z", "0b01000001", dvreg, svreg )
+	end if
 end sub
 
 '':::::
@@ -4459,7 +4546,11 @@ private sub _emitCLTF _
 		byval svreg as IRVREG ptr _
 	) static
 
-	hCMPF( rvreg, label, "nz", "0b00000001", dvreg, svreg )
+	if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+		hCMPF( rvreg, label, "a", "", dvreg, svreg )
+	else
+		hCMPF( rvreg, label, "nz", "0b00000001", dvreg, svreg )
+	end if
 
 end sub
 
@@ -4499,7 +4590,11 @@ private sub _emitCEQF _
 		byval svreg as IRVREG ptr _
 	) static
 
-	hCMPF( rvreg, label, "nz", "0b01000000", dvreg, svreg )
+	if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+		hCMPF( rvreg, label, "z", "", dvreg, svreg )
+	else
+		hCMPF( rvreg, label, "nz", "0b01000000", dvreg, svreg )
+	end if
 
 end sub
 
@@ -4539,7 +4634,11 @@ private sub _emitCNEF _
 		byval svreg as IRVREG ptr _
 	) static
 
-	hCMPF( rvreg, label, "z", "0b01000000", dvreg, svreg )
+	if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+		hCMPF( rvreg, label, "nz", "", dvreg, svreg )
+	else
+		hCMPF( rvreg, label, "z", "0b01000000", dvreg, svreg )
+	end if
 
 end sub
 
@@ -4597,7 +4696,11 @@ private sub _emitCLEF _
 		byval svreg as IRVREG ptr _
 	) static
 
-	hCMPF( rvreg, label, "nz", "0b01000001", dvreg, svreg )
+	if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+		hCMPF( rvreg, label, "ae", "", dvreg, svreg )
+	else
+		hCMPF( rvreg, label, "nz", "0b01000001", dvreg, svreg )
+	end if
 
 end sub
 
@@ -4656,7 +4759,11 @@ private sub _emitCGEF _
 		byval svreg as IRVREG ptr _
 	) static
 
-	hCMPF( rvreg, label, "ae", "", dvreg, svreg )
+	if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+		hCMPF( rvreg, label, "be", "", dvreg, svreg )
+	else
+		hCMPF( rvreg, label, "ae", "", dvreg, svreg )
+	end if
 
 end sub
 
@@ -4934,18 +5041,26 @@ private sub _emitSGNF( byval dvreg as IRVREG ptr )
 
 	label = *symbUniqueLabel( )
 
-	iseaxfree = hIsRegFree( FB_DATACLASS_INTEGER, EMIT_REG_EAX )
+	if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+		outp "fldz"
+		outp "fxch"
+		outp "fcomip"
 
-	if( iseaxfree = FALSE ) then
-		hPUSH( "eax" )
-	end if
+	else
+		iseaxfree = hIsRegFree( FB_DATACLASS_INTEGER, EMIT_REG_EAX )
 
-	outp "ftst"
-	outp "fnstsw ax"
-	outp "sahf"
+		if( iseaxfree = FALSE ) then
+			hPUSH( "eax" )
+		end if
 
-	if( iseaxfree = FALSE ) then
-		hPOP( "eax" )
+		outp "ftst"
+		outp "fnstsw ax"
+		outp "sahf"
+
+		if( iseaxfree = FALSE ) then
+			hPOP( "eax" )
+		end if
+
 	end if
 
 	'' if dst = 0
@@ -5140,12 +5255,79 @@ private sub hEmitFloatFunc( byval func as integer )
 	end if
 end sub
 
+private sub hEmitFloat_Int_686( byval dvreg as IRVREG ptr )
+	if dvreg->dtype = FB_DATATYPE_SINGLE then
+		outp( "sub esp, 4" )
+		outp( "fist dword ptr [esp]" )
+		outp( "fild dword ptr [esp]" )
+	else
+		outp( "sub esp, 8" )
+		outp( "fld st(0)" )
+		outp( "fistp qword ptr [esp]" )
+		outp( "fild  qword ptr [esp]" )
+	end if
+	outp( "fld1" )
+	outp( "fsubr st(0), st(1)" )
+	outp( "fxch st(2)" )
+	outp( "fcomip" )
+	outp( "fcmovb st(0), st(1)" )
+	outp( "fstp st(1)" )
+	if dvreg->dtype = FB_DATATYPE_SINGLE then
+		outp( "add esp, 4" )
+	else
+		outp( "add esp, 8" )
+	end if
+end sub
+
+private sub hEmitFloat_fix_686( byval dvreg as IRVREG ptr )
+	if dvreg->dtype = FB_DATATYPE_SINGLE then
+		outp( "sub esp, 4" )
+		outp( "fld st(0)" )
+		outp( "fabs" )
+		outp( "fist dword ptr [esp]" )
+		outp( "fild dword ptr [esp]" )
+	else
+		outp( "sub esp, 8" )
+		outp( "fld st(0)" )
+		outp( "fabs" )
+		outp( "fld st(0)" )
+		outp( "fistp qword ptr [esp]" )
+		outp( "fild  qword ptr [esp]" )
+	end if
+		outp( "fld1" )
+		outp( "fsubr st(1)" )
+		outp( "fxch st(2)" )
+		outp( "fcomip" )
+		outp( "fcmovb st(0), st(1)" )
+		outp( "fstp st(1)" )
+		outp( "fldz" )
+		outp( "fcomip st(2)" )
+		outp( "fst st(1)" )
+		outp( "fchs" )
+		outp( "fcmovb st(0), st(1)" )
+		outp( "fstp st(1)" )
+	if dvreg->dtype = FB_DATATYPE_SINGLE then
+		outp( "add esp, 4" )
+	else
+		outp( "add esp, 8" )
+	end if
+
+end sub
+
 private sub _emitFLOOR( byval dvreg as IRVREG ptr )
-	hEmitFloatFunc( 1 )
+	if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+		hEmitFloat_Int_686(dvreg)
+	else
+		hEmitFloatFunc( 1 )
+	end if
 end sub
 
 private sub _emitFIX( byval dvreg as IRVREG ptr )
-	hEmitFloatFunc( 2 )
+	if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+		hEmitFloat_fix_686( dvreg )
+	else
+		hEmitFloatFunc( 2 )
+	end if
 end sub
 
 private sub _emitFRAC( byval dvreg as IRVREG ptr )
@@ -6268,16 +6450,24 @@ private sub _emitLOADF2B( byval dvreg as IRVREG ptr, byval svreg as IRVREG ptr )
 		outp "push eax"
 	end if
 
-	outp "ftst"
-	outp "fnstsw ax"
+	if( env.clopt.cputype >= FB_CPUTYPE_686 ) then
+		outp "fldz"
+		outp "fcomip"
+		outp "setnz al"
 
-	#if 1
-	outp "sahf"
-	outp "setnz al"
-	#else
-	outp "test ah, 0b01000000"
-	outp "setz al"
-	#endif
+	else
+		outp "ftst"
+		outp "fnstsw ax"
+
+		#if 1
+		outp "sahf"
+		outp "setnz al"
+		#else
+		outp "test ah, 0b01000000"
+		outp "setz al"
+		#endif
+
+	end if
 
 	outp "fstp st(0)"
 
@@ -6895,7 +7085,7 @@ private sub _getArgReg _
 	( _
 		byval dtype as integer, _
 		byval dclass as integer, _
-		byval argnum as integer, _
+		byval regnum as integer, _
 		byref r1 as integer _
 	)
 
@@ -6903,7 +7093,7 @@ private sub _getArgReg _
 	'' thiscall ECX
 	'' fastcall ECX, EDX
 
-	select case argnum
+	select case regnum
 	case 1
 		r1 = EMIT_REG_ECX
 	case 2
@@ -7061,6 +7251,49 @@ private sub _procAllocArg _
 		lgt = env.pointersize
 	end if
 
+	'' Maybe allocate local variable for THIS argument?
+	select case symbGetProcMode( proc )
+	case FB_FUNCMODE_THISCALL, FB_FUNCMODE_FASTCALL
+
+		'' should never get here if "-z no-thiscall" is active
+		assert( iif( (symbGetProcMode( proc ) = FB_FUNCMODE_THISCALL), env.clopt.nothiscall = FALSE, TRUE ) )
+		'' should never get here if "-z no-fastcall" is active
+		assert( iif( (symbGetProcMode( proc ) = FB_FUNCMODE_FASTCALL), env.clopt.nofastcall = FALSE, TRUE ) )
+
+		'' Only check for arguments passed in registers
+		'' for the this/fast calling convention.  But in
+		'' theory we should be able to do this for any
+		'' call convention since param.regnum should only
+		'' be set if we in fact expect that argument is
+		'' passed in a register.  Also, it would probably
+		'' be more efficient to add add a backlink to
+		'' FBS_VAR and initialize in symbVarInitFields()
+		'' (and set it in symbAddVarForParam()) instead of
+		'' looping through all parameters to compare with
+		'' the argument variable.
+
+		'' We expect to use param.regnum to determine
+		'' the register that the argument was passed in.
+		'' Allocate a local variable to store the register.
+		'' Since it won't be available on the stack and
+		'' gas backend won't know to always load from the
+		'' register we need to store the register to a
+		'' local variable.
+
+		'' Is param linked to local variable for argument?
+		var param = symbGetProcHeadParam( proc )
+		while( param )
+			if( param->param.regnum <> 0 ) then
+				if( param->param.var = sym ) then
+					_procAllocLocal( proc, sym )
+					exit sub
+				end if
+			end if
+			param = symbGetParamNext( param )
+		wend
+
+	end select
+
 	sym->ofs = proc->proc.ext->stk.argofs
 	proc->proc.ext->stk.argofs += ((lgt + 3) and not 3)
 
@@ -7091,6 +7324,12 @@ private sub _procFooter _
 	)
 
 	dim as integer oldpos = any, ispublic = any
+	dim as zstring ptr mangledname = symbGetMangledName( proc )
+	dim as FB_PROCEXT ptr procext = proc->proc.ext
+	dim as integer islinux = any
+	dim as integer hasunwind = any
+	islinux = ( env.clopt.target = FB_COMPTARGET_LINUX )
+	hasunwind = islinux andalso fbGetOption( FB_COMPOPT_UNWINDINFO )
 
 	ispublic = symbIsPublic( proc )
 
@@ -7103,25 +7342,34 @@ private sub _procFooter _
 	hALIGN( 16 )
 
 	if( ispublic ) then
-		hPUBLIC( symbGetMangledName( proc ), symbIsExport( proc ) )
+		hPUBLIC( mangledName, symbIsExport( proc ) )
 	end if
 
-	hLABEL( symbGetMangledName( proc ) )
+	hLABEL( mangledName )
 
-	if( env.clopt.target = FB_COMPTARGET_LINUX ) then
-		outEx( ".type " + *symbGetMangledName( proc ) + ", @function" + NEWLINE )
+	if( islinux ) then
+		outEx( ".type " + *mangledName + ", @function" + NEWLINE )
+		if hasunwind then
+			'' cfi statements are required to be able to tag this frame
+			'' as having an exception/cleanup handler
+			outEx( ".cfi_startproc" + NEWLINE)
+		end if
 	end if
 
 	'' frame
 	hCreateFrame( proc )
 
-	edbgEmitLineFlush( proc, proc->proc.ext->dbg.iniline, proc )
+	edbgEmitLineFlush( proc, procext->dbg.iniline, proc )
 
 	''
 	emitFlush( )
 
 	''
 	hDestroyFrame( proc, bytestopop )
+
+	if islinux andalso hasunwind then
+		outEx( ".cfi_endproc" + NEWLINE )
+	end if
 
 	edbgEmitLineFlush( proc, proc->proc.ext->dbg.endline, exitlabel )
 

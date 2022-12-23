@@ -1,3 +1,112 @@
+Version 1.10.0
+
+[changed]
+- gcc: '-funwind-tables' enabled on 64-bit targets for stack unwinding (adeyblue)
+- fbc: '--eh-frame-hdr' for linking on 64-bit nix targets for stack unwinding (adeyblue)
+- x86: arch 686 by default instead of 486 (SARG)
+- x86: arch 586 by default instead of 586 on DOS
+- asm backend: only with 686 arch, use of fcomi(p) to avoid slower instructions and also less code (SARG)
+- fbc: #DUMP <expr> and #ODUMP <expr> pragmas only available in debug version of fbc
+- inc/fbmath.bi renamed to inc/fbprng.bi
+- fbc: file I/O statements return "Expected file number expression" when checking for file number expression
+- fbc: [LINE] INPUT statements return "Expected ',' or ';'" error when checking for the comma or semi-colon separator
+- sf.net #953: fbc: improve compile time error messages for INPUT [#] statements
+- sf.net #953: fbc: improve compile time error messages for LINE INPUT [#] statements giving better positional information
+- sf.net #826: fbc: booleans are ranked against integer types to determine closest match in type resolution
+- sf.net #455: fbc: Allow &nnn... octal literals in source (like VALINT and friends)
+- fbc: automatically restart fbc/parser at first executable statement if required after preprocessor statements parsed
+- fbc: -forcelang overrides default lang, -lang, previous -forcelang, #lang, #cmdline "-lang", #cmdline "-forcelang"
+- fbc: allow gnu triplets for -target option even in standalone builds
+- gfxlib2: store alpha from source to destination when blending alpha primitives in MMX blender to match C blender
+- makefile: internal rename (TARGET_PRFEX => BUILD_PREFIX) and conditionally set the library and object directories (default is still based on TARGET)
+- fbc: dos: set DXE_LD_LIBRARY_PATH environment variable when calling DXE3GEN
+- release: target DOS gcc 9.3.0 and bin utils 2.30 for next release
+- Unix GETMOUSE() under TERM=linux now requires libgpm 1.20.4 or higher (libgpm.so.2), instead of the older libgpm.so.1 versions. (for compatibility with modern Debian/Ubuntu versions, and probably other distros, since 2008)
+- gas64 : SGN type is INTEGER for whole numbers instead LONG
+- fbc: thiscall calling convention default for extern "c++" / win32 / x86 / non-static member procedures
+- fbc: disable byval cva_list returns on ARM targets
+- fbc: If a procedure definition has a declaration and the definition does not explicitly specify a calling convention, then the calling convention is implied by the declaration.
+- fbc: Improve handling of closing parenthesis in first argument of a procedure call for some expressions (sf.net # 468). If there is no leading parenthesis, then there should be no ambiguity that the procedure is being invoked without the parentheses
+- fbc: remove #pragma push( lookup108 ) to use symbol lookup method from fbc-1.08.x and earlier on unqualified symbol names - it was crutch for fb 1.09.0 to help with testing and transition to better lookups
+
+[added]
+- gas/gas64: '.cif_sections' and '.cif_' directives for stack unwinding (adeyblue)
+- gas/gas64: '.seh_' directives for stack unwinding (adeyblue)
+- fbc: '-eunwind' command line option to enable stack unwind information, implied by '-e', '-ex', '-exx'
+- fbc: set bit value '__FB_ERR__' = &h200 if '-eunwind' is enabled
+- gas64 : stack overflow check (total of all local variables) at compile time --> warning - stack size for linux = 8MB, for Windows = default or defined by user (SARG)
+- gas64 : stack overflow check at run time if -exx is used - stack size for linux = 8MB, for Windows = default or defined by user (SARG)
+- fbc: debug pragma #LOOKUP <sym>
+- rtlib: DOS serial driver - add support for second PIC and IRQ 8 to 15
+- fbc allow '-target i386-pc-msdosdjgpp' and similar for cross compiling dos targets (even in stand alone)
+- rtlib: ./inc/fbc-int/system.bi - for fb_CpuDetect()
+- gfxlib2: ./inc/fbc-int/gfx.bi - to expose FB_GFXCTX structure and some typedefs from gfx lib (useful for some tests in the test-suite)
+- fbc: basic-macros: add __FB_IIF__( compare-expr, true-expr, false-expr ) macro
+- github #357: fbc: add '-buildprefix <name>' command line option to specify tool name prefix in both fbc standalone and normal set-ups.  Overrides default 'target-' prefix on tool names in normal fbc set-up
+- fbgfx.bi: add scancode SC_CENTER=&h4C as alias for SC_CLEAR - used for NUMPAD 5 key
+- makefile: 'DISABLE_GAS64_DEBUG=1' makefile configuration option to disable debugging comments in gas64 asm files
+- gfxlib2: add FB.GET_SCANLINE_SIZE to fbgfx.bi and ScreenControl() to get current internal scan line size multiplier
+- gfxlib2: SCREENCONTROL: add getters for GL parameters - new GET_GL_* constants in fbgfx.bi
+- fbc: allow a TYPE or UNION to be declared inside another TYPE or UNION to allow declaration of nested named types.  Support c++ name mangling parameters of named nested types.  Support definition of variables declared in a named nested type.
+- Name mangling for c++ 'char' through BYTE/UBYTE parameters using the form "[unsigned] byte alias "char".  Data type size is still 8 byte signed/unsigned from fbc side, but will mangled as 'char'; neither signed nor unsigned for the c++ side.
+- Support 'SOURCE_DATE_EPOCH' environment variable for controlling the instrinsic __DATE__, __DATE_ISO__, __TIME__ macros.  This in turn controls __FB_BUILD_DATE__ and __FB_BUILD_DATE_ISO__ macros when building the compiler.  Report error message on malformed values.
+- fbc -nolib a,b,c command line option for selectively excluding specific libraries when linking (more fine-grained control than -nodeflibs, and not only for default libraries)
+- fbc will restart the parser when #cmdline "-mt" is used or usage of any threaded functions automatically enable -mt.  This allows the compiler to parse the current module from the beginning and process any __FB_MT__ checks.
+- fbc: __fastcall support for gcc/gas 32-bit x86 - fbc passes first and second integer arguments in ECX and EDX registers respectively, caller cleans up stack.
+- fbc: __FB_QUERY_SYMBOL__( what, sym ) built-in macro for querying fbc symbol internals.  Added fbc-int/symbol.bi (Work in progress).
+- add '-z no-retinflts' command line option for code generation.  This option disables returning some structures (types) in floating point registers.  This is a work-around for different handling of structs returned by value on different tool chains / targets.
+
+[fixed]
+- gas64: missing restoring of use of one virtual register on sqr for float (SARG)
+- gas64: variable of constant datatype not propagated when emitting uop (SARG)
+- llvm: add missing data type in datatype array (not tested)
+- sf.net #951: fbc: remove guessed type for cva_list (aka __builtin_va_list)
+- sf.net #952: fbc: CINT (and other conversion keywords) fails - don't allow inexact conversions or casts from UDT cast operators
+- sf.net #817: fbc: Type mismatch not detected when passing an array of UDT incompatible with the expected UDT
+- sf.net #953: fbc: no error generated on INPUT #h, "text" statements
+- sf.net #953: fbc: no error generated on LINE INPUT #h, "text" statements
+- sf.net #826: fbc: Weird overload resolution with booleans
+- sf.net #916: fbc: 'LINE INPUT [#1 | prompt,] variable [, maxchars]' requires length parameter for ZSTRING/WSTRING PTR variable
+- sf.net #916: fbc: Error on LINE INPUT [#1] if either missing or irrelevant max length argument
+- sf.net #892: fbc: Bug when default calling via a pointer to a 'Sub' defined with the only 'Any Ptr' optional parameter
+- github #403: fbc: The default value of the parameter was passed incorrectly when calling the pointer function (Skyfish) [optional parameter values are specified by the function pointer declaration]
+- sf.net #944: fbc: regression - local static arrays shouldn't have the array descriptor moved to global scope - partially revert #944 and add test
+- fbc: parser skips extra token on error recovery for #if/#ifndef/defined() statements
+- sf.net #455: fbc: Number lexing allows much bad input - a show a warning message "Expected digit" where '&o', '&h', '&b' has no digits following
+- gas64: initialize debug structure even if not emitting debug info to prevent errors due to setup changes by #cmdline inside the parser
+- fbc: don't allow '-lang' option to override '-forcelang' option on command line
+- github #199: Gfxlib Different Pixel Output Between C & MMX - change MMX Alpha blenders to match C blenders
+- github #368: Fix mangling involving toplevel CONST and abbreviations (dkl)
+- fbc: dos: invoke dxe3gen when cross compiling to dos - previously only executed on DOS host
+- fbc: dos: when invoking dxe3gen on cross compiler, don't write to ldopt.tmp, dxe3gen doesn't seem to be able to handle the ldopt.tmp argument
+- fbc: remove double path separator characters '/', '\' when setting the fbc path prefix
+- rtlib: multikey was missing VK_NUMPAD5 and SC_CLEAR scancodes in the key table, causing NUMPAD-5 to be handled as escape in the windows D2D gfx driver
+- sf.net: #961: rtlib/gfxlib: COLOR() function returns LONG but should be ULONG
+- The DISABLE_GPM build option for the Unix rtlib now only disables GETMOUSE() for TERM=linux, which is the case that uses GPM, however GETMOUSE() for TERM=xterm now keeps working under DISABLE_GPM, since that case does not use GPM.
+- Unix rtlib: Multi-threaded use of shell()/exec()/dylibload()/dylibfree() can no longer cause input/output terminal configuration cleanup at program exit to fail
+- sf.net #965: fbc: Bad code generation in gcc backend for NOT PTR_EXPR - don't allow unary ops on pointers
+- Internal (unit tests): Stack corruption in mid() tests (regression from 1.07.0)
+- gfxlib2: LINE statement computing an incorrect line style pattern on any non-X86 (i.e. 64-bit, etc)
+- github #393: rtlib: OPEN fails when opening an encoded file for append.  Check the BOM on existing files for INPUT/APPEND, write the BOM for new files for OUTPUT/APPEND.
+- sf.net #968: fbc: major changes how initializers are handled and pairing of a UDT's (internal) structure and the initializer list given by the user.
+- fbc: show an error on byref initializers that can't take address of.  Previously this was checked by fbc debug assertion only.
+- sf.net #894: Can't initialise a UDT as copy of another if the first element is a UNION, fixed by sf.net #968
+- sf.net #922: Sometimes can't use extra backets inside TYPE UDT initialiser - now, don't allow optional parentheses when parsing type<UDT>(...) if left parenthesis is found
+- sf.net #824: Illegal destructor call after '#print typeof( f() )' when f() is a function returning an object by value
+- fbc: delete destructor calls of discarded expressions in IIF(), previously, unscoped dtors (to be called after the expression) and deleted dtors (to be never called) were being handled the same
+- gas backend: fix spill registers when all reused registers are within the same emit operation
+- github #404: gas64: fix stack size and alignment for GOSUB usage (SARG)
+- fbc: #macro definition parsing incorrectly handles single line comments ending with line continuation character and incorrectly joins the following line to the comment
+- fbc: add special handling for #inclib "fbgfx?" to fix incorrect linking to non-threaded gfx library.  #include "fbgfx.bi" was causing the libfbgfx library to always be linked even when thread safe version was expected (causing deadlocks in user programs)
+- gfxlib2: fix dos keyboard handler so that left shift key will release in multikey() checks
+- sf.net #970: Illicit "error 202: Illegal member access, UDT.operator.cast" compiler error message - suppress bogus error message when checking procedure overloads for possible candidate
+- sf.net #811: *(ptr).field should give an error
+- sf.net #972: A local Type cannot access members of an inherited Type external to its scope but normally accessible
+- sf.net #834: Line continuation not handled during #if 0 skipping - fixed by ignoring line continuation characters and invalid directives - continue to preserve multiline comment parsing
+- fbc: internal: throw an error if __FB_EVAL__ would cause the parser to nest too deeply
+- fbc: improve code generation for structs returned by value and structs returned in registers - some structs where not handled correctly and had mismatched code generation when mixing modules with different fbc backends or linking again c libraries (e.g. gas+gcc or gas64+gcc) resulting in stack corruption or wrong values returned in structs
+
+
 Version 1.09.0
 
 [changed]
@@ -19,6 +128,7 @@ Version 1.09.0
 
 [added]
 - fbc: add '-z fbrt' command line option to link against libfbrt*.a instead of libfb*.a
+- '-z valist-as-ptr' command line option for varargs. On targets that implement va_list as a pointer, allow overriding gcc __builtin_va* macros with our own expressions
 - makefile: add target for fbrt, fb runtime library written in fbc. Bulid libfbrt*.a and merge any missing object modules from libfb*.a
 - github #325, #326: fbc: add support for wstrings used with __FB_EVAL__()
 - crt headers: minimal crt headers to compile fbc and build test-suite on freebsd-13.0-i386
@@ -29,7 +139,8 @@ Version 1.09.0
 - sf.net #666: overload matching for UDT's with CAST() operators as [w|z]string type and implicit conversions
 - makefile: add initial support for powerpc and powerpc64 on FreeBSD (lenoil98)
 - makefile: normalize ppc*[le] & powerpc*[le] ARCH to powerpc*[le]
-- boostrap: normalize powerpc bootstrap directories to match ARCH as <os>-<powerpc*>
+- bootstrap: normalize powerpc bootstrap directories to match ARCH as <os>-<powerpc*>
+- bootstrap: add cygwin-x86_64 to the bootstrap package
 - fbc: add 'powerpc' and 'powerpc64' cpu families and cpu type for '-arch' command line option (lenoil98)
 - fbc: add 'powerpc64le' cpu type for -arch command line option
 - fbc: allow shortnames 'ppc', 'ppc64', 'ppc64le' for '-target' command line option
@@ -37,7 +148,7 @@ Version 1.09.0
 - fbc: internal add big endian information to the CPUFAMILYINFO() internal table
 - fbc: defined __FB_BIGENDIAN__ if cpu type is bigendian
 - objinfo: check ELF files for little endian or big endian signature
-- fbc: __thiscall declaration support for gcc/gas 32-bit x86 calling g++ classes from fbc passing first argument in ECX register, caller cleans up stack except on win32 x86
+- fbc: __thiscall declaration support for gcc/gas 32-bit x86.  Pass first instance/integer/pointer parameter in ECX, caller cleans up stack except on win32 x86.
 - fbc: add __FB_OPTIMIZE__ intrinisic define - always defined and will have a value from 0 to 3 to indicate the optimization level passed to the backend compiler
 - github #341: fbc: #cmdline "args..." directive to specify command line arguments within source files, restarting the parser for some options, and restarting fbc for others.  Don't allow '-print', '-help' options
 - github #341: fbc: #cmdline "-end" will trigger a parser or fbc restart if needed.  fbc can't detect the end of reading all the #cmdlines to do this automatically
@@ -45,6 +156,17 @@ Version 1.09.0
 - github #341: fbc: only process #cmdline in the first pass of the source module (which must be specified on the real command line)
 - github #341: fbc: '-z nocmdline' command line option to ignore #cmdline directives, allows overriding source directives with real fbc command line, show warning if used with '-w all'
 - fbc: #cmdline "-version" will immediately print the fbc version information if it was not already printed.  To get verbose version information '-v' option must appear before '-version'.  fbc command line  option '-v' option behaviour overrides #cmdline "-v"
+- fbc: '#pragma reserve symbol' statement will reserve a symbol name in the current scope / namespace and generate an error if the symbol redefined or is used in an expression
+- fbc: '#pragma reserve (asm) symbol' statement will reserve an ASM symbol name in all ASM statements and blocks
+- sf.net #515: fbc: update reserved ASM keywords list for ASM statements and ASM blocks
+- fbc: '#pragma reserve (extern) symbol' reserves global symbols.  fbc shows a warning if a reserved symbol is used for a public sub or shared variable in the global namespace
+- sf.net #645: respect global namespace '.' and '..' prefixes in REDIM
+- rtlib: Add new higher baud rates to the serial driver 1500000,2000000,2500000,3000000,35000000,4000000
+- fbc: '-w error' command line option to report warnings as errors.  Warnings cause the error count to increase, warning messages are displayed as "error warning...", compilation / assembly / linking aborts, fbc exits with an error code
+- sf.net #945, #948: improve error message for ambiguous symbol access to list all of the conflicted symbols
+- ./inc/fbc-int/array.bi - add fb.ArrayLen( array ) function to return total number of elements in an array
+- ./inc/fbc-int/array.bi - add fb.ArraySize( array ) function to return total size of an array in bytes
+- fbc: #pragma push( lookup108 ) to use symbol lookup method from fbc-1.08.x and earlier on unqualified symbol names
 
 [fixed]
 - github #315: set parameters when calling SCREENCONTROL (was broken in fbc 1.08.0 due to new LONG/LONGINT SCREENCONTROL API's)
@@ -59,12 +181,32 @@ Version 1.09.0
 - rtlib: define fb_AtomicSetThreadFlags() even in the non-multithreaded version of run time library - it is needed by thread_core.c:threadproc() - unusual but not impossible to link the non-multithreaded rtlib and call thread functions
 - darwin: a variety of improvements to allow compiling and linking (TeeEmCee)
 - gfxlib2: fix d2d scaling issues for high dpi (adeyblue)
+- gfxlib2: conditional for cygwin builds (#if => #ifdef)
 - fbc: fix regression - fbc.stripsymbols (-strip/-nostrip) check clobbered by emscripten merge
 - fbc: improve error message on statement between SELECT and first CASE inside a subroutine and don't allow CONST/ENUM between any SELECT & first CASE.
 - fbc: don't allow labels or EXIT statements between SELECT and first CASE statement
 - sf.net #843: Implicit casting of argument to string works for Instr() and Mid() but not for Left() and Right() 
 - sf.net #483 fblite: Can't call LEN with nested WITH block string member 
 - gas64 : fix required size for local variables >2GB
+- sf.net #645: don't access locals if explicit namespace is given on identifier
+- sf.net #645: don't access locals if explicit global namespace '.' and '..' prefixes are given on identifier
+- sf.net #645: throw compile time error if scoped REDIM variable shadows a variable of the same name
+- sf.net #939: __FB_ARG_EXTRACT__ causes compiler abort; was NULL pointer use on empty argument list.
+- sf.net #581: Locals break/override THIS access to inherited members
+- sf.net #871: Inherited methods without this shadowed by global functions
+- sf.net #730: Using quirk keywords as identifier leads to parsing problems later
+- sf.net #942: string to wstring conversions causing a run-time crash if the string contained invalid multi-byte characters due to unhandled error result in the runtime library
+- sf.net #941: dim/redim of extern array causes compiler fail - add error recovery in rtlArrayRedim() for bad integer conversions of bounds
+- sf.net #935: bad code causes fbc to fail internal assert - adjust the internal assert to allow for actual generated code in IIF() expressions
+- sf.net #515: fbc: show a warning if a public sub or a shared variable have the same name as global asm keywords (x86 and x86_64 only)
+- sf.net #944: Array descriptors are defined more than once (gcc backend)
+- sf.net #947: enum declaration in a namespace incorrectly checks for parent
+- sf.net #950: REDIM PRESERVE does not destroy the correct array elements of a multidimensional array -> memory leak
+- sf.net #945: regression: Scoping rules have changed inside methods - allow globals to shadow non-explicit enums implicitly imported in to the current namespace
+- sf.net #892: Bug when default calling via a pointer to a 'Sub' defined with the only 'Any Ptr' - fbc now differentiates between function pointers that have different numbers and positions of optional parameters
+- sf.net #948: Overriding class members doesn't work inside methods of further-extended subclasses
+- sf.net #948: Duplicated class members inherit from the base class instead of incorrectly from the namespace
+- compiler fault when accessing this.member, where member is incorrectly inherited from a namespace (i.e. not derived from UDT) and report 'Element not defined' instead
 
 
 Version 1.08.0

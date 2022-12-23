@@ -145,32 +145,6 @@ private sub hCopyStringsBack( byval f as ASTNODE ptr )
 	loop
 end sub
 
-private function hMaybePassArgInReg _
-	( _
-		byval proc as FBSYMBOL ptr, _
-		byval argnum as integer _
-	) as integer
-
-	function = FALSE
-
-	'' only allow thiscall in 32-bit x86 and ignore for other targets
-	'' !!!TODO!!! - It would be better if the parser removed the thiscall calling
-	'' convention in all combinations of target/arch before here and we only have
-	'' asserts() here in the debug version with a simple check on FB_FUNCMODE_THISCALL
-	if( symbGetProcMode( proc ) = FB_FUNCMODE_THISCALL ) then
-		if( env.clopt.backend = FB_BACKEND_GAS ) then
-			if( fbIs64bit( ) = FALSE ) then
-				if( fbGetCpuFamily( ) = FB_CPUFAMILY_X86 ) then
-					if( argnum = 1 ) then
-						function = TRUE
-					end if
-				end if
-			end if
-		end if
-	end if
-
-end function
-
 function astLoadCALL( byval n as ASTNODE ptr ) as IRVREG ptr
 	static as integer reclevel = 0
 	'' totalstackbytes is the sum of all args and padding currently on the stack
@@ -198,7 +172,7 @@ function astLoadCALL( byval n as ASTNODE ptr ) as IRVREG ptr
 		arg = n->r
 		while( arg )
 			l = arg->l
-			if( hMaybePassArgInReg( proc, arg->sym->param.argnum ) = FALSE ) then
+			if( arg->sym->param.regnum = 0 ) then
 				argbytes += symbCalcArgLen( l->dtype, l->subtype, arg->arg.mode )
 			end if
 			arg = arg->r
@@ -224,6 +198,24 @@ function astLoadCALL( byval n as ASTNODE ptr ) as IRVREG ptr
 	'' Count up the size for the caller's stack clean up (after the call)
 	bytestopop = bytestoalign
 
+	'' FB_BACKEND_GAS: THISCALL & FASTCALL
+	'' ECX is always loaded last before the function call
+	'' so we don't need to worry about preserving it
+	'' EDX might get trashed if we have nested function calls
+	'' !!!FIXME!!! we maybe need to preserve EDX before we
+	'' start pushing arguments to the function call and restore
+	'' EDX after the call completes.
+	'' if( (env.clopt.backend = FB_BACKEND_GAS) then
+	''     arg = n->r
+	''     while( arg )
+	''         if( arg->sym->param.regnum = 2 ) then
+	''             save_edx = TRUE
+	''             exit while
+	''          end if
+	''         arg = arg->r
+	''     wend
+	'' end if
+
 	'' Push each argument
 	arg = n->r
 	while( arg )
@@ -233,7 +225,9 @@ function astLoadCALL( byval n as ASTNODE ptr ) as IRVREG ptr
 		'' cdecl: pushed arguments must be popped by caller
 		'' pascal/stdcall: callee does it instead
 		'' thiscall: callee does it in gcc 32-bit win32
-		if( hMaybePassArgInReg( proc, arg->sym->param.argnum ) ) then
+		'' fastcall: callee does it in gcc 32-bit win32
+		'' don't add bytes if argument is passed in a register
+		if( arg->sym->param.regnum <> 0 ) then
 			argbytes = 0
 		else
 			argbytes = symbCalcArgLen( l->dtype, l->subtype, arg->arg.mode )
@@ -251,9 +245,9 @@ function astLoadCALL( byval n as ASTNODE ptr ) as IRVREG ptr
 		astDelNode( l )
 
 		if( ast.doemit ) then
-			if( hMaybePassArgInReg( proc, arg->sym->param.argnum ) ) then
+			if( arg->sym->param.regnum <> 0 ) then
 				lreg = irAllocVREG( typeGetDtAndPtrOnly( l->dtype ), l->subtype )
-				'' regFamily should be irrelevent for thiscall
+				'' regFamily should be irrelevent for thiscall/fastcall
 				'' lreg->regFamily = IR_REG_FPU_STACK | IR_REG_SSE
 				lreg->dtype = l->dtype
 			else
@@ -269,12 +263,14 @@ function astLoadCALL( byval n as ASTNODE ptr ) as IRVREG ptr
 
 	'' Hidden param for functions returning big structs on stack
 	if( symbProcReturnsOnStack( proc ) ) then
-		'' Pop hidden ptr if cdecl and target doesn't want the callee
-		'' to do it, despite it being cdecl.
-		if( ((symbGetProcMode( proc ) = FB_FUNCMODE_CDECL) or (symbGetProcMode( proc ) = FB_FUNCMODE_THISCALL)) and _
-		    ((env.target.options and FB_TARGETOPT_CALLEEPOPSHIDDENPTR) = 0) ) then
-			bytestopop += env.pointersize
-		end if
+		'' Pop hidden ptr if cdecl/thiscall/fastcall and target doesn't
+		'' want the callee to do it, despite it being cdecl/thiscall/fastcall.
+		select case symbGetProcMode( proc )
+		case FB_FUNCMODE_CDECL, FB_FUNCMODE_THISCALL, FB_FUNCMODE_FASTCALL
+			if( (env.target.options and FB_TARGETOPT_CALLEEPOPSHIDDENPTR) = 0) then
+				bytestopop += env.pointersize
+			end if
+		end select
 		if( ast.doemit ) then
 			'' Clear the temp struct (so the function can safely
 			'' do assignments to it in case it includes STRINGs),

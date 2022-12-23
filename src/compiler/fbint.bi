@@ -347,6 +347,7 @@ enum FB_TOKEN
 	FB_TK_CDECL
 	FB_TK_STDCALL
 	FB_TK_THISCALL
+	FB_TK_FASTCALL
 	FB_TK_ALIAS
 	FB_TK_LIB
 	FB_TK_OVERLOAD
@@ -544,7 +545,7 @@ end type
 
 enum FB_TARGETOPT
 	FB_TARGETOPT_UNIX       = &h00000001  '' Unix-like system? (for __FB_UNIX__ #define)
-	                      ''= &h00000002
+	''                      = &h00000002
 	FB_TARGETOPT_EXPORT     = &h00000004  '' Support for exporting symbols from DLLs?
 
 	'' Whether callee always pops the hidden struct result ptr
@@ -558,15 +559,16 @@ enum FB_TARGETOPT
 	'' - neither Linux GCC (following the i386 SysV ABI),
 	'' - nor DJGPP
 	'' do it. TODO: what about the BSDs?
-	FB_TARGETOPT_RETURNINREGS        = &h00000010
+	FB_TARGETOPT_RETURNINREGS        = &h00000010   '' mingw-w64 & winlibs
+	FB_TARGETOPT_RETURNINFLTS        = &h00000020   '' mingw-w64 only, but not win-libs
 
 	'' Whether the stack needs to be aligned to 16 bytes before any
 	'' call to external code (x86/x86_64 GNU/Linux and Darwin)
-	FB_TARGETOPT_STACKALIGN16        = &h00000020
+	FB_TARGETOPT_STACKALIGN16        = &h00000040
 
-	FB_TARGETOPT_ELF   = &h00000040
-	FB_TARGETOPT_COFF  = &h00000080
-	FB_TARGETOPT_MACHO = &h00000100
+	FB_TARGETOPT_ELF                 = &h00000080
+	FB_TARGETOPT_COFF                = &h00000100
+	FB_TARGETOPT_MACHO               = &h00000200
 end enum
 
 type FBTARGET
@@ -645,6 +647,7 @@ type FBENV
 	restart_action   as FB_RESTART_FLAGS        '' restart as soon as possible
 	restart_status   as FB_RESTART_FLAGS        '' current status of restarts #lang/#cmdline/parser/fbc
 	restart_count    as integer                 '' number of restarts
+	restart_lang     as FB_LANG                 '' lang compatibility on restart if processed in #cmdline "-lang LANG"
 
 	'' Lists to collect #inclibs and #libpaths
 	libs            as TSTRSET

@@ -1,4 +1,4 @@
-.TH FBC 1 "2021-09-05" "FreeBASIC Compiler 1.09.0" "FreeBASIC Compiler"
+.TH FBC 1 "2022-05-29" "FreeBASIC Compiler 1.10.0" "FreeBASIC Compiler"
 .SH NAME
 fbc \- The FreeBASIC compiler
 .SH DESCRIPTION
@@ -19,13 +19,16 @@ Read more command line arguments from a file
 Treat file as .o/.a input file
 .TP
 \fB\-arch\fR \fItype\fR
-Set target architecture (default: \fB486\fR)
+Set target architecture (default: \fB686\fR)
 .TP
 \fB\-asm\fR \fBatt\fR|\fBintel\fR
 Set the assembler format for Asm blocks and for code generation (x86 only)
 .TP
 \fB\-b\fR \fIfile\fR
 Treat file as .bas input file
+.TP
+\fB\-buildprefix\fR \fIname\fR
+Specify prefix on tool names (as, ar, ld)
 .TP
 \fB\-c\fR
 Compile only, do not link
@@ -62,6 +65,9 @@ Enable full error location reporting
 .TP
 \fB\-enullptr\fR
 Enable null-pointer checking
+.TP
+\fB\-eunwind\fR
+Enable call stack unwind information
 .TP
 \fB\-entry\fR \fIname\fR
 Change the entry point of the program from main()
@@ -118,10 +124,16 @@ Only show \fIn\fR errors
 Use thread-safe FB runtime
 .TP
 \fB\-nodeflibs\fR
-Do not include the default libraries
+Do not include the default libraries when linking
 .TP
 \fB\-noerrline\fR
 Do not show source context in error messages
+.TP
+\fB\-nolib\fR \fIa,b,c\fR
+Do not include the specified libraries when linking
+.TP
+\fB\-noobjinfo\fR
+Do not read/write compile-time info from/to .o and .a files
 .TP
 \fB\-nostrip\fR
 Do not strip symbol information from the output file
@@ -222,6 +234,9 @@ Enable const type warnings
 \fB\-w\fR \fBsuffix\fR
 Enable invalid suffix warnings
 .TP
+\fB\-w\fR \fBerror\fR
+Report warnings as errors
+.TP
 \fB\-Wa\fR \fIa,b,c\fR
 Pass options to GAS
 .TP
@@ -236,6 +251,15 @@ Set output executable/library file name
 .TP
 \fB\-z gosub-setjmp\fR
 Use setjmp/longjmp to implement GOSUB
+.TP
+\fB\-z valist-as-ptr\fR
+Use pointer expressions to implement CVA_*() macros
+.TP
+\fB\-z no-thiscall\fR
+Don't use '__thiscall' calling convention
+.TP
+\fB\-z fbrt\fR
+Link with 'fbrt' instead of 'fb' runtime library
 .TP
 \fB\-z nocmdline\fR
 Disable #cmdline source directives
@@ -253,7 +277,7 @@ The full language specification and help is available in wiki format at
 .B 
 https://www.freebasic.net/wiki/
 .SH COPYRIGHT
-Copyright \(co 2004\-2021 The FreeBASIC Development Team
+Copyright \(co 2004\-2022 The FreeBASIC Development Team
 .br
 This is free software.  You may redistribute copies of it under the terms of
 the GNU General Public License <http://www.gnu.org/licenses/gpl.html>.

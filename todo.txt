@@ -64,15 +64,31 @@ o LLVM backend
   - va_*() macros can't be implemented, so must be disallowed just like with -gen gcc
 
 o ABI
-  - MinGW GCC 4.7 C++ defaults to __thiscall for methods like MSVC,
+  - review passing of short structs in registers or though hidden pointer
+    parameter on the stack.  fbc appears to be consistent with it-self
+    for calling and returning but not when different backends are mixed
+    for example, gas/gcc32 or gas64/gcc64.  Appears that windows only
+    passes structs through hidden parameter, regardless of the size.
+  - MinGW GCC 4.7 C++ defaults to __thiscall for methods like MSVC,  - MinGW GCC 4.7 C++ defaults to __thiscall for methods like MSVC,
     instead of __cdecl as on Linux, even though GCC doesn't use MSVC's name
     mangling [yet].
+    [ ] refactor cProcCallingConv() usage and target specific checks
+    - FB can probably support __fastcall with C/LLVM backends pretty easily
+    [x] add the __fastcall keyword
+    [x] add '-z no-fastcall' to ignore "fastcall" calling convention
+    [x] allow defining and calling __fastcall procedures in gas 32
+    [x] only allow integral data types
+    [ ] testing on other arch / targets (arm, freebsd, dos, etc)
+    [ ] preserve EDX in nested calls - it could get trashed and currently
+        we don't have a defined way to preserve
     - FB can probably support __thiscall with C/LLVM backends pretty easily
-    [ ] use __thiscall calling by default for mingw gcc 32-bit, currently
+    [x] use __thiscall calling by default for mingw gcc 32-bit,
         currently, users must manage this explicitly, recommend using a 
         #define thiscall __thiscall depending on target platform
+    [x] only allow integral data types
     [ ] more tests and documentation for mangling/calling conventions, not every
         calling convention is tested or documented completely - also hard to test
+    [x] allow defining and calling __thiscall procedures in gas 32
     [x] silently ignore on 64-bit, but warn if declare & procedure is different
     [x] implement in -gen gas 32-bit. Hard to do, AST/IR/EMIT currently doesn't
         have enough information or implementation for passing arguments in registers.
@@ -227,7 +243,26 @@ o -exx should catch...
         [X] painful to add
         [X] added as '#cmdline "args..."'
         [ ] painful to complete
-        [ ] don't allow #cmdline if any line was parsed already that emits backend code
+        [X] don't allow #cmdline if any line was parsed already that emits backend code
+        [ ] clean-up the lang compatibility options in fbc source,
+            the restart logic and option tracking is difficult to
+            follow (even with the comments and well named symbols).
+        [ ] #if( sizeof() ) and other expressions will give wrong results
+            unless user specifically adds #cmdline "-end" since the auto
+            detection of first executable line can't be determined
+            For example real command line is "fbc -target win32 file.bas"
+               #cmdline "-target win64 -gen gcc"
+               #if( sizeof(integer) = 4 ) )
+                  #print "this shouldn't happen, but will"
+               #endif
+        [x] default to -lang FB
+        [x] allow '-lang' to override '-lang' on real command line
+        [x] allow '-forcelang' to override '-lang' on real command line
+        [x] don't allow '-lang' to override '-forcelang' on the command line
+        [x] #lang directive applies to current module only
+        [x] '-forcelang' on real command line overrides #lang directives.
+        [x] '#cmdline "-lang"' should apply to all modules and can overide real command line
+        [x] '#cmdline "-forcelang ..."' should apply to all modules and can overide real command line '-lang' but not '-forcelang'
         [X] add '-z nocmdline' to ignore #cmdline directives
         [X] reset parser for command line options that require it
         [X] reset fbc for command line options that require it (-target, -arch, -lib, etc)

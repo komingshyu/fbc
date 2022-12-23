@@ -1,7 +1,7 @@
 '' symbol table module for variables (scalars and arrays)
 ''
 '' chng: sep/2004 written [v1ctor]
-''		 jan/2005 updated to use real linked-lists [v1ctor]
+''       jan/2005 updated to use real linked-lists [v1ctor]
 
 
 #include once "fb.bi"
@@ -21,15 +21,15 @@ sub symbVarInit( )
 	'' type FBARRAYDIM
 	symb.fbarraydim = symbStructBegin( NULL, NULL, NULL, "__FB_ARRAYDIMTB$", NULL, FALSE, 0, FALSE, 0, 0 )
 
-	'' elements		as integer
+	'' elements     as integer
 	symbAddField( symb.fbarraydim, "elements", 0, dTB(), _
 	              FB_DATATYPE_INTEGER, NULL, 0, 0, 0 )
 
-	'' lbound		as integer
+	'' lbound       as integer
 	symbAddField( symb.fbarraydim, "lbound", 0, dTB(), _
 	              FB_DATATYPE_INTEGER, NULL, 0, 0, 0 )
 
-	'' ubound		as integer
+	'' ubound       as integer
 	symbAddField( symb.fbarraydim, "ubound", 0, dTB(), _
 	              FB_DATATYPE_INTEGER, NULL, 0, 0, 0 )
 
@@ -175,7 +175,7 @@ function symbAddArrayDescriptorType _
 	'' dtype), that may end up being deleted before the global.
 	attrib = FB_SYMBATTRIB_NONE
 	pattrib = FB_PROCATTRIB_NONE
-	sym = symbLookupInternallyMangledSubtype( id, attrib, pattrib, NULL, symtb, hashtb )
+	sym = symbLookupInternallyMangledSubtype( id, NULL, attrib, pattrib, NULL, symtb, hashtb )
 	if( sym ) then
 		return sym
 	end if
@@ -538,33 +538,33 @@ function symbAddVar _
 		byval options as FB_SYMBOPT _
 	) as FBSYMBOL ptr
 
-    dim as FBSYMBOL ptr s = any
-    dim as FBSYMBOLTB ptr symtb = any
-    dim as FBHASHTB ptr hashtb = any
-    dim as integer isglobal = any, stats = any
+	dim as FBSYMBOL ptr s = any
+	dim as FBSYMBOLTB ptr symtb = any
+	dim as FBHASHTB ptr hashtb = any
+	dim as integer isglobal = any, stats = any
 
-    function = NULL
+	function = NULL
 
-    ''
-    isglobal = (attrib and (FB_SYMBATTRIB_PUBLIC or _
-			 				FB_SYMBATTRIB_EXTERN or _
-			 				FB_SYMBATTRIB_SHARED or _
-			 				FB_SYMBATTRIB_COMMON)) <> 0
+	''
+	isglobal = (attrib and (FB_SYMBATTRIB_PUBLIC or _
+	                        FB_SYMBATTRIB_EXTERN or _
+	                        FB_SYMBATTRIB_SHARED or _
+	                        FB_SYMBATTRIB_COMMON)) <> 0
 
-    ''
-    if( lgt <= 0 ) then
-    	lgt	= symbCalcLen( dtype, subtype )
-    end if
+	''
+	if( lgt <= 0 ) then
+		lgt = symbCalcLen( dtype, subtype )
+	end if
 
-    '' no explict alias?
-    if( id_alias = NULL ) then
-    	'' only preserve a case-sensitive version if in BASIC mangling
-    	if( parser.mangling <> FB_MANGLING_BASIC ) then
-    		id_alias = id
-    	end if
-    	stats = 0
+	'' no explict alias?
+	if( id_alias = NULL ) then
+		'' only preserve a case-sensitive version if in BASIC mangling
+		if( parser.mangling <> FB_MANGLING_BASIC ) then
+			id_alias = id
+		end if
+		stats = 0
 
-    else
+	else
 		stats = FB_SYMBSTATS_HASALIAS
 	end if
 
@@ -623,8 +623,7 @@ function symbAddVar _
 
 	'' Static member var using parent UDT as dtype? Length must be
 	'' recalculated later, when UDT was fully parsed...
-	if( (symbGetType( s ) = FB_DATATYPE_STRUCT) and _
-	    (s->subtype = symbGetCurrentNamespc( )) ) then
+	if( symbIsParentNamespace( symbGetType( s ), s->subtype ) ) then
 		symbSetUdtHasRecByvalRes( subtype )
 	end if
 
@@ -847,7 +846,7 @@ function symbGetVarHasCtor( byval s as FBSYMBOL ptr ) as integer
 	'' array? dims can be -1 with "DIM foo()" arrays..
 	if( symbGetArrayDimensions( s ) <> 0 ) then
 		'' (note: it doesn't matter if it's dynamic array or not, local
-		'' 		  non-dynamic array allocations will have to fill
+		''        non-dynamic array allocations will have to fill
 		''        the descriptor, so arrays can't be accessed before that)
 		return TRUE
 	end if
@@ -914,8 +913,8 @@ function symbCloneVar( byval sym as FBSYMBOL ptr ) as FBSYMBOL ptr
 		end if
 
 		function = symbAddVar( symbGetName( sym ), NULL, _
-				symbGetType( sym ), symbGetSubType( sym ), 0, _
-				symbGetArrayDimensions( sym ), dTB(), symbGetAttrib( sym ), 0 )
+		                       symbGetType( sym ), symbGetSubType( sym ), 0, _
+		                       symbGetArrayDimensions( sym ), dTB(), symbGetAttrib( sym ), 0 )
 	end if
 end function
 

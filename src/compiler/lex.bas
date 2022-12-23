@@ -11,17 +11,17 @@
 #include once "pp.bi"
 #include once "parser.bi"
 
-declare sub 		lexReadUTF8				( )
+declare sub         lexReadUTF8             ( )
 
-declare sub 		lexReadUTF16LE			( )
+declare sub         lexReadUTF16LE          ( )
 
-declare sub 		lexReadUTF16BE			( )
+declare sub         lexReadUTF16BE          ( )
 
-declare sub 		lexReadUTF32LE			( )
+declare sub         lexReadUTF32LE          ( )
 
-declare sub 		lexReadUTF32BE			( )
+declare sub         lexReadUTF32BE          ( )
 
-declare sub 		hMultiLineComment		( )
+declare sub         hMultiLineComment       ( )
 
 declare sub hSkipChar( )
 
@@ -34,9 +34,9 @@ dim shared as string pponly_ln
 
 '':::::
 '' only update the line count if not inside a multi-line macro
-#define UPDATE_LINENUM( ) 		_
-	if( lex.ctx->deflen = 0 ) then 	:_
-		lex.ctx->linenum += 1 		:_
+#define UPDATE_LINENUM( )            _
+	if( lex.ctx->deflen = 0 ) then  :_
+		lex.ctx->linenum += 1       :_
 	end if
 
 '':::::
@@ -115,7 +115,7 @@ sub lexInit _
 
 	''
 	lex.ctx->bufflen = 0
-	lex.ctx->deflen	= 0
+	lex.ctx->deflen = 0
 
 	if( env.inf.format = FBFILE_FORMAT_ASCII ) then
 		lex.ctx->buffptr = iif( is_fb_eval, @lex.ctx->buff, NULL )
@@ -382,7 +382,7 @@ function lexGetLookAheadChar2 _
 
 	'' internally, should never use this function unless there
 	'' is already a character in the look aead
-	assert( lex.ctx->lahdchar1 <> UINVALID ) 
+	assert( lex.ctx->lahdchar1 <> UINVALID )
 
 	if( lex.ctx->lahdchar2 = UINVALID ) then
 		hSkipChar( )
@@ -440,9 +440,9 @@ private sub hReadIdentifier _
 		var c = lexCurrentChar( )
 		select case as const c
 		case CHAR_AUPP to CHAR_ZUPP, _
-			 CHAR_ALOW to CHAR_ZLOW, _
-			 CHAR_0 to CHAR_9, _
-			 CHAR_UNDER
+			CHAR_ALOW to CHAR_ZLOW, _
+			CHAR_0 to CHAR_9, _
+			CHAR_UNDER
 
 		case CHAR_DOT
 			if( (flags and LEXCHECK_EATPERIOD) = 0 ) then
@@ -458,12 +458,12 @@ private sub hReadIdentifier _
 		if( skipchar = FALSE ) then
 			'' no more room?
 			if( tlen = FB_MAXNAMELEN ) then
- 				'' show warning?
- 				if( (flags and LEXCHECK_NOLINECONT) = 0 ) then
+				'' show warning?
+				if( (flags and LEXCHECK_NOLINECONT) = 0 ) then
 					'' just once..
 					flags or= LEXCHECK_NOLINECONT
-	 				errReportWarn( FB_WARNINGMSG_IDNAMETOOBIG )
- 				end if
+					errReportWarn( FB_WARNINGMSG_IDNAMETOOBIG )
+				end if
 
 				skipchar = TRUE
 
@@ -483,9 +483,9 @@ private sub hReadIdentifier _
 	dtype = FB_DATATYPE_INVALID
 
 #if 0
-	'' Possible method to disallow suffixes on identifiers in -lang fb 
-	'' completely would be to not read them.  No nead to report error 
-	'' or warning. The parser should report an error when it gets an 
+	'' Possible method to disallow suffixes on identifiers in -lang fb
+	'' completely would be to not read them.  No nead to report error
+	'' or warning. The parser should report an error when it gets an
 	'' invalid token on it's own.
 	''
 	if( fbLangOptIsSet( FB_LANG_OPT_SUFFIX ) = FALSE ) then
@@ -533,9 +533,10 @@ private sub hReadIdentifier _
 end sub
 
 ''::::
-''hex_oct_bin     = 'H' HEXDIG+
-''                | 'O' OCTDIG+
-''                | 'B' BINDIG+
+''hex_oct_bin     = '&' OCTDIG+
+''                | '&' 'H' HEXDIG+
+''                | '&' 'O' OCTDIG+
+''                | '&' 'B' BINDIG+
 ''
 private function hReadNonDecNumber _
 	( _
@@ -547,7 +548,7 @@ private function hReadNonDecNumber _
 
 	dim as uinteger value = any, c = any, first_c = any
 	dim as ulongint value64 = any
-	dim as integer lgt = any
+	dim as integer lgt = any, havedigits = any
 	dim as integer skipchar = any
 
 	assert( dtype = FB_DATATYPE_SHORT )
@@ -555,8 +556,27 @@ private function hReadNonDecNumber _
 	value = 0
 	lgt = 0
 	skipchar = FALSE
+	havedigits = FALSE
 
-	c = lexCurrentChar( )
+	#if __FB_DEBUG__
+		'' expect that hReadNonDecNumber( ) was called with '&' in lexCurrentChar( )
+		c = lexCurrentChar( )
+		assert( c = CHAR_AMP )
+	#endif
+
+	c = lexGetLookAheadChar( )
+
+	'' and octal number immediately after '&' indicates octal
+	select case as const c
+	case CHAR_0 to CHAR_7
+		c = CHAR_OUPP
+		'' don't lexEatChar( ) here, case CHAR_OUPP, CHAR_OLOW
+		'' will take take of it below
+	case else
+		'' no octal char is next so consume the char and lex normally
+		'' '&'
+		lexEatChar( )
+	end select
 
 	select case as const c
 	'' hex
@@ -567,13 +587,14 @@ private function hReadNonDecNumber _
 		tlen += 2
 		lexEatChar( )
 
-		'' skip trailing zeroes if not inside a comment or parsing an $include
+		'' skip leading zeroes if not inside a comment or parsing an $include
 		if( (flags and (LEXCHECK_NOLINECONT or LEXCHECK_NOSUFFIX)) = 0 ) then
 			while( lexCurrentChar( ) = CHAR_0 )
 				*pnum = CHAR_0
 				pnum += 1
 				tlen += 1
 				lexEatChar( )
+				havedigits = TRUE
 			wend
 		end if
 
@@ -582,6 +603,7 @@ private function hReadNonDecNumber _
 			select case c
 			case CHAR_ALOW to CHAR_FLOW, CHAR_AUPP to CHAR_FUPP, CHAR_0 to CHAR_9
 				lexEatChar( )
+				havedigits = TRUE
 				if( skipchar = FALSE ) then
 					*pnum = c
 					pnum += 1
@@ -629,13 +651,14 @@ private function hReadNonDecNumber _
 		tlen += 2
 		lexEatChar( )
 
-		'' skip trailing zeroes if not inside a comment or parsing an $include
+		'' skip leading zeroes if not inside a comment or parsing an $include
 		if( (flags and (LEXCHECK_NOLINECONT or LEXCHECK_NOSUFFIX)) = 0 ) then
 			while( lexCurrentChar( ) = CHAR_0 )
 				*pnum = CHAR_0
 				pnum += 1
 				tlen += 1
 				lexEatChar( )
+				havedigits = TRUE
 			wend
 		end if
 
@@ -645,6 +668,7 @@ private function hReadNonDecNumber _
 			select case c
 			case CHAR_0 to CHAR_7
 				lexEatChar( )
+				havedigits = TRUE
 
 				if( skipchar = FALSE ) then
 					*pnum = c
@@ -716,13 +740,14 @@ private function hReadNonDecNumber _
 		tlen += 2
 		lexEatChar( )
 
-		'' skip trailing zeroes if not inside a comment or parsing an $include
+		'' skip leading zeroes if not inside a comment or parsing an $include
 		if( (flags and (LEXCHECK_NOLINECONT or LEXCHECK_NOSUFFIX)) = 0 ) then
 			while( lexCurrentChar( ) = CHAR_0 )
 				*pnum = CHAR_0
 				pnum += 1
 				tlen += 1
 				lexEatChar( )
+				havedigits = TRUE
 			wend
 		end if
 
@@ -731,6 +756,8 @@ private function hReadNonDecNumber _
 			select case c
 			case CHAR_0, CHAR_1
 				lexEatChar( )
+				havedigits = TRUE
+
 				if( skipchar = FALSE ) then
 					*pnum = c
 					pnum += 1
@@ -771,7 +798,22 @@ private function hReadNonDecNumber _
 		exit function
 	end select
 
+
+	'' lgt havedigits
+	''  0     FALSE    no numbers, show a warning and recover
+	''  0     TRUE     all leading zeroes, truncate to single zero
+	''  >0    FALSE    not possible - do nothing here
+	''  >0    TRUE     normal number - do nothing here
+
+	'' no number or only leading zeros?
 	if( lgt = 0 ) then
+		'' no digits at all? show a warning
+		if( havedigits = FALSE ) then
+			if( (flags and (LEXCHECK_NOLINECONT or LEXCHECK_NOSUFFIX)) = 0 ) then
+				errReportWarn( FB_WARNINGMSG_EXPECTEDDIGIT )
+			end if
+		end if
+		'' truncate or recover with a single 0
 		*pnum = CHAR_0
 		pnum += 1
 		tlen += 1
@@ -825,11 +867,11 @@ private sub hReadFloatNumber _
 			if( skipchar = FALSE ) then
 				skipchar = TRUE
 			else
- 				'' show warning?
- 				if( (flags and LEXCHECK_NOLINECONT) = 0 ) then
- 					'' just once..
- 					flags or= LEXCHECK_NOLINECONT
- 					errReportWarn( FB_WARNINGMSG_NUMBERTOOBIG )
+				'' show warning?
+				if( (flags and LEXCHECK_NOLINECONT) = 0 ) then
+					'' just once..
+					flags or= LEXCHECK_NOLINECONT
+					errReportWarn( FB_WARNINGMSG_NUMBERTOOBIG )
 				end if
 			end if
 		end if
@@ -891,16 +933,16 @@ private sub hReadFloatNumber _
 				if( skipchar = FALSE ) then
 					skipchar = TRUE
 				else
- 					'' show warning?
- 					if( (flags and LEXCHECK_NOLINECONT) = 0 ) then
- 						'' just once..
- 						flags or= LEXCHECK_NOLINECONT
- 						errReportWarn( FB_WARNINGMSG_NUMBERTOOBIG )
+					'' show warning?
+					if( (flags and LEXCHECK_NOLINECONT) = 0 ) then
+						'' just once..
+						flags or= LEXCHECK_NOLINECONT
+						errReportWarn( FB_WARNINGMSG_NUMBERTOOBIG )
 					end if
 				end if
 			end if
 		loop
-		
+
 	end select
 
 
@@ -912,7 +954,7 @@ private sub hReadFloatNumber _
 		if( (flags and (LEXCHECK_NOSUFFIX or LEXCHECK_NOLETTERSUFFIX)) = 0 ) then
 			lexEatChar( )
 		end if
-		
+
 	'' '!'
 	case FB_TK_SNGTYPECHAR
 		t.dtype = FB_DATATYPE_SINGLE
@@ -920,7 +962,7 @@ private sub hReadFloatNumber _
 		if( (flags and LEXCHECK_NOSUFFIX) = 0 ) then
 			lexEatChar( )
 		end if
-		
+
 	'' '#'?
 	case FB_TK_DBLTYPECHAR '' alias for CHAR_SHARP
 		t.dtype = FB_DATATYPE_DOUBLE
@@ -962,7 +1004,7 @@ private sub readNumberChars _
 		case CHAR_0 to CHAR_9
 			lexEatChar( )
 			if( ((c <> CHAR_0) or (t.len > 0) or save_first_leading_zero) and _
-			    (not skipchar) ) then
+				(not skipchar) ) then
 				*pnum = c
 				pnum += 1
 				t.len += 1
@@ -1021,7 +1063,7 @@ private sub readNumberChars _
 					t.dtype = FB_DATATYPE_ULONGINT
 					if( (flags and LEXCHECK_NOLINECONT) = 0 ) then
 						if( value_prev > 1844674407370955161ULL or _
-						   (value and &h8000000000000000ULL) = 0 ) then
+						(value and &h8000000000000000ULL) = 0 ) then
 							errReportWarn( FB_WARNINGMSG_NUMBERTOOBIG )
 							skipchar = TRUE
 						end if
@@ -1102,7 +1144,8 @@ private sub hReadNumber( byref t as FBTOKEN, byval flags as LEXCHECK )
 
 	'' hex, oct, bin
 	case CHAR_AMP
-		lexEatChar( )
+		'' let hReadNonDecNumber call lexEatChar( ) just in case the
+		'' literal number starts with &[0..7]
 		t.len = 0
 		value = hReadNonDecNumber( pnum, t.len, t.dtype, flags )
 
@@ -1536,10 +1579,10 @@ private sub hCheckPeriods _
 	if( readfullid ) then
 		t->prdpos = t->len
 		hReadIdentifier( @t->text[t->len], _
-					 	 t->len, _
-					 	 t->dtype, _
-						 t->suffixchar, _
-					 	 flags or LEXCHECK_EATPERIOD )
+						t->len, _
+						t->dtype, _
+						t->suffixchar, _
+						flags or LEXCHECK_EATPERIOD )
 
 		t->sym_chain = symbLookup( @t->text, t->id, t->class )
 	end if
@@ -1621,7 +1664,7 @@ sub lexNextToken _
 	lex.ctx->after_space = FALSE
 
 re_read:
-	t->text[0] = 0									'' t.text = ""
+	t->text[0] = 0                                  '' t.text = ""
 	t->len = 0
 	t->sym_chain = NULL
 
@@ -1654,7 +1697,7 @@ re_read:
 				'' is next char a valid identifier char? then, read it
 				select case as const lexGetLookAheadChar( )
 				case CHAR_AUPP to CHAR_ZUPP, CHAR_ALOW to CHAR_ZLOW, _
-					 CHAR_0 to CHAR_9, CHAR_UNDER
+					CHAR_0 to CHAR_9, CHAR_UNDER
 					exit do
 
 				'' could it be '_##'?
@@ -1692,7 +1735,7 @@ re_read:
 				t->dtype = FB_DATATYPE_INVALID
 				t->suffixchar = CHAR_NULL
 				t->len = 1
-				t->text[0] = CHAR_LF					'' t.text = chr( 10 )
+				t->text[0] = CHAR_LF                    '' t.text = chr( 10 )
 				t->text[1] = 0                          '' /
 				exit sub
 
@@ -1744,7 +1787,7 @@ re_read:
 	'' '&'?
 	case CHAR_AMP
 		select case lexGetLookAheadChar( )
-		case CHAR_HUPP, CHAR_HLOW, CHAR_OUPP, CHAR_OLOW, CHAR_BUPP, CHAR_BLOW
+		case CHAR_HUPP, CHAR_HLOW, CHAR_OUPP, CHAR_OLOW, CHAR_BUPP, CHAR_BLOW, CHAR_0 to CHAR_7
 			hReadNumber( *t, flags )
 		case else
 			t->class = FB_TKCLASS_OPERATOR
@@ -1927,8 +1970,8 @@ read_char:
 
 		'' '(', ')', ',', ';', '.', '{', '}', '[', ']'?
 		case CHAR_LPRNT, CHAR_RPRNT, CHAR_COMMA, _
-			 CHAR_SEMICOLON, CHAR_DOT, CHAR_LBRACE, CHAR_RBRACE, _
-			 CHAR_LBRACKET, CHAR_RBRACKET
+			CHAR_SEMICOLON, CHAR_DOT, CHAR_LBRACE, CHAR_RBRACE, _
+			CHAR_LBRACKET, CHAR_RBRACKET
 			t->class = FB_TKCLASS_DELIMITER
 
 		'' ' ', '\t'?
@@ -1940,7 +1983,7 @@ read_char:
 				select case as const lexCurrentChar( )
 				case CHAR_SPACE, CHAR_TAB
 					lexEatChar( )
-					t->text[t->len] = CHAR_SPACE  			'' t.text += " "
+					t->text[t->len] = CHAR_SPACE            '' t.text += " "
 					t->len += 1
 				case else
 					t->text[t->len] = 0                     '' t.text += chr( 0 )
@@ -1958,7 +2001,7 @@ read_char:
 end sub
 
 '':::::
-'' MultiLineComment	 = '/' ''' . '/' '''
+'' MultiLineComment  = '/' ''' . '/' '''
 ''
 private sub hMultiLineComment( ) static
 	dim as integer cnt
@@ -2340,14 +2383,14 @@ sub lexReadLine _
 				end if
 			end if
 
-			lex.ctx->head->id 	 = FB_TK_EOL
+			lex.ctx->head->id    = FB_TK_EOL
 			lex.ctx->head->class = FB_TKCLASS_DELIMITER
 			exit sub
 
 		case else
 			'' closing char?
 			if( char = endchar ) then
-				lex.ctx->head->id 	 = endchar
+				lex.ctx->head->id    = endchar
 				lex.ctx->head->class = FB_TKCLASS_DELIMITER
 				exit sub
 			end if
@@ -2508,7 +2551,7 @@ sub lexCheckToken _
 			''   LEXCHECK_POST_LANG_SUFFIX    - suffix allowed but only if the dialect allows
 			''   LEXCHECK_POST_STRING_SUFFIX  - string suffix $ allowed depending on dialect, and other suffixes not allowed
 
-			'' no suffix is allowed in any dialect? 
+			'' no suffix is allowed in any dialect?
 			if( (flags and LEXCHECK_POST_SUFFIX) <> 0 ) then
 				hWarnSuffix()
 				hDropSuffix()

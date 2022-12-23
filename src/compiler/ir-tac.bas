@@ -577,7 +577,7 @@ private sub _emitPushArg _
 		dim as integer reg1 = INVALID
 
 		hGetVREG( vr, vr_dtype, vr_dclass, vr_typ )
-		emitGetArgReg( vr_dclass, vr_typ, param->param.argnum, reg1 )
+		emitGetArgReg( vr_dclass, vr_typ, param->param.regnum, reg1 )
 
 		if( reg1 <> INVALID ) then
 			lreg->reg = reg1
@@ -1131,7 +1131,7 @@ end sub
 ''::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 #if __FB_DEBUG__
-private sub hDumpFreeIntRegs( )
+sub hDumpFreeIntRegs( )
 	dim as string free, used
 	dim as integer reg = any
 
@@ -1383,6 +1383,7 @@ private sub _flush static
 
 		''
 		'hDump( op, v1, v2, vr )
+		'hDumpFreeIntRegs()
 
 		''
 		select case as const astGetOpClass( op )

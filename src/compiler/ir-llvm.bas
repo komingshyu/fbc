@@ -154,25 +154,25 @@ end type
 const MAXVARINISCOPES = 128
 
 type IRLLVMCONTEXT
-	indent				as integer  '' current indentation used by hWriteLine()
-	linenum				as integer
+	indent              as integer  '' current indentation used by hWriteLine()
+	linenum             as integer
 
-	varini				as string
-	variniscopelevel		as integer
+	varini              as string
+	variniscopelevel    as integer
 	variniscopes(0 to MAXVARINISCOPES-1) as IRLLVMVARINISCOPE
 
-	ctors				as string
-	dtors				as string
-	ctorcount			as integer
-	dtorcount			as integer
+	ctors               as string
+	dtors               as string
+	ctorcount           as integer
+	dtorcount           as integer
 
-	fbctinf				as string
-	fbctinf_len			as integer
+	fbctinf             as string
+	fbctinf_len         as integer
 
-	section				as integer  '' current section to write to
-	head_txt			as string
-	body_txt			as string
-	foot_txt			as string
+	section             as integer  '' current section to write to
+	head_txt            as string
+	body_txt            as string
+	foot_txt            as string
 end type
 
 declare function hEmitType _
@@ -225,6 +225,7 @@ dim shared as const zstring ptr dtypeName(0 to FB_DATATYPES-1) = _
 	@"double"   , _ '' double
 	@"%FBSTRING", _ '' string
 	@"i8"       , _ '' fix-len string
+	@"%struct.va_list", _ '' va_list - not tested, it can be different for every platform
 	NULL        , _ '' struct
 	NULL        , _ '' namespace
 	NULL        , _ '' function
@@ -369,6 +370,8 @@ private function hEmitProcCallConv( byval proc as FBSYMBOL ptr ) as string
 		function = "x86_stdcallcc "
 	case FB_FUNCMODE_THISCALL
 		function = "x86_thiscall "
+	case FB_FUNCMODE_FASTCALL
+		function = "x86_fastcall "
 	end select
 end function
 
@@ -1665,8 +1668,13 @@ end sub
 private function hGetConvOpCode( byval ldtype as integer, byval rdtype as integer ) as zstring ptr
 	if( typeGetClass( ldtype ) = FB_DATACLASS_FPOINT ) then
 		if( typeGetClass( rdtype ) = FB_DATACLASS_FPOINT ) then
+
+			'' same size? i.e. due to const -> non-const, then no convert
+			if( typeGetSize( ldtype ) = typeGetSize( rdtype ) ) then
+				return NULL
+			end if
+
 			'' float to float (i.e. single <-> double)
-			assert( typeGetSize( ldtype ) <> typeGetSize( rdtype ) )
 			return iif( typeGetSize( ldtype ) < typeGetSize( rdtype ), @"fptrunc", @"fpext" )
 		end if
 

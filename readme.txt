@@ -1,6 +1,6 @@
 
     FreeBASIC - A multi-platform BASIC Compiler
-    Copyright (C) 2004-2021 The FreeBASIC development team.
+    Copyright (C) 2004-2022 The FreeBASIC development team.
 
     Official site:      https://freebasic.net/
     Forum:              https://freebasic.net/forum/
@@ -157,6 +157,7 @@
     - MinGW-w64     https://mingw-w64.org/
     - OpenXDK       http://openxdk.sourceforge.net/
     - TDM-GCC       http://tdm-gcc.tdragon.net/
+    - WinLibs       https://winlibs.com/
 
   o Credits
 
@@ -200,7 +201,7 @@
         rtlib & gfxlib2 fixes and improvements
         documentation and examples
         forum administrator and moderator since forever
-    - Ruben Rodriguez (rubentbstk[at]gmail.com)
+    - Ruben Rodriguez (fbc[at]cha0s.io)
         Var keyword, const specifier, placement new, operator overloading and
         other OOP-related work, C BFD wrapper, many fixes and improvements.
     - Simon Nash
