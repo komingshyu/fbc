@@ -2283,6 +2283,10 @@ private sub handleOpt _
 			fbSetOption( FB_COMPOPT_PEDANTICCHK, _
 				fbGetOption( FB_COMPOPT_PEDANTICCHK ) or FB_PDCHECK_ERROR )
 
+		case "upcast"
+			fbSetOption( FB_COMPOPT_PEDANTICCHK, _
+				fbGetOption( FB_COMPOPT_PEDANTICCHK ) or FB_PDCHECK_UPCAST )
+
 		case else
 			value = clng( arg )
 		end select
@@ -2317,8 +2321,8 @@ private sub handleOpt _
 			fbSetOption( FB_COMPOPT_FBRT, TRUE )
 		case "nocmdline"
 			fbSetOption( FB_COMPOPT_NOCMDLINE, TRUE )
-		case "no-retinflts"
-			fbSetOption( FB_COMPOPT_NORETURNINFLTS, TRUE )
+		case "retinflts"
+			fbSetOption( FB_COMPOPT_RETURNINFLTS, TRUE )
 		case else
 			hFatalInvalidOption( arg, is_source )
 		end select
@@ -3803,6 +3807,20 @@ private sub hSetDefaultLibPaths( )
 	'' standalone, which has libgcc in the main lib/.
 	if( fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_JS ) then
 		fbcAddLibPathFor( "libgcc.a" )
+
+		#ifndef DISABLE_STDCXX_PATH
+			'' we don't specifically need c++, but for some users that do want to
+			'' interop with c++ and to allow some of the tests/cpp tests to pass
+			'' it's helpful to also query for a c++ library.
+			select case fbGetOption( FB_COMPOPT_TARGET )
+			case FB_COMPTARGET_FREEBSD
+				fbcAddLibPathFor( "libc++.so" )
+			case FB_COMPTARGET_DOS
+				fbcAddLibPathFor( "libstdcx.a" )
+			case else
+				fbcAddLibPathFor( "libstdc++.so" )
+			end select
+		#endif
 	end if
 
 	select case( fbGetOption( FB_COMPOPT_TARGET ) )
@@ -4131,6 +4149,7 @@ private sub hPrintOptions( byval verbose as integer )
 	print "  -w constness     Enable const type warnings"
 	print "  -w suffix        Enable invalid suffix warnings"
 	print "  -w error         Report warnings as errors"
+	print "  -w upcast        Enable warning when up-casting discards initializers"
 	end if
 	print "  -Wa <a,b,c>      Pass options to 'as'"
 	print "  -Wc <a,b,c>      Pass options to 'gcc' (-gen gcc) or 'llc' (-gen llvm)"
@@ -4144,7 +4163,7 @@ private sub hPrintOptions( byval verbose as integer )
 	print "  -z no-fastcall   Don't use '__fastcall' calling convention"
 	print "  -z fbrt          Link with 'fbrt' instead of 'fb' runtime library"
 	print "  -z nocmdline     Disable #cmdline source directives"
-	print "  -z no-retinflts  Disable returning some types in floating point registers"
+	print "  -z retinflts     Enable returning some types in floating point registers"
 	end if
 
 end sub
@@ -4161,7 +4180,7 @@ private sub hPrintVersion( byval verbose as integer )
 
 	print "FreeBASIC Compiler - Version " + FB_VERSION + _
 		" (" + FB_BUILD_DATE_ISO + "), built for " + fbGetHostId( ) + " (" & fbGetHostBits( ) & "bit)"
-	print "Copyright (C) 2004-2022 The FreeBASIC development team."
+	print "Copyright (C) 2004-2023 The FreeBASIC development team."
 
 	#ifdef ENABLE_STANDALONE
 		hAppendConfigInfo( config, "standalone" )

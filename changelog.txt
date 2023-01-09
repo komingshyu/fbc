@@ -20,7 +20,7 @@ Version 1.10.0
 - gfxlib2: store alpha from source to destination when blending alpha primitives in MMX blender to match C blender
 - makefile: internal rename (TARGET_PRFEX => BUILD_PREFIX) and conditionally set the library and object directories (default is still based on TARGET)
 - fbc: dos: set DXE_LD_LIBRARY_PATH environment variable when calling DXE3GEN
-- release: target DOS gcc 9.3.0 and bin utils 2.30 for next release
+- release: target DOS gcc 9.3.0 and binutils 2.35.1 for next release
 - Unix GETMOUSE() under TERM=linux now requires libgpm 1.20.4 or higher (libgpm.so.2), instead of the older libgpm.so.1 versions. (for compatibility with modern Debian/Ubuntu versions, and probably other distros, since 2008)
 - gas64 : SGN type is INTEGER for whole numbers instead LONG
 - fbc: thiscall calling convention default for extern "c++" / win32 / x86 / non-static member procedures
@@ -28,6 +28,8 @@ Version 1.10.0
 - fbc: If a procedure definition has a declaration and the definition does not explicitly specify a calling convention, then the calling convention is implied by the declaration.
 - fbc: Improve handling of closing parenthesis in first argument of a procedure call for some expressions (sf.net # 468). If there is no leading parenthesis, then there should be no ambiguity that the procedure is being invoked without the parentheses
 - fbc: remove #pragma push( lookup108 ) to use symbol lookup method from fbc-1.08.x and earlier on unqualified symbol names - it was crutch for fb 1.09.0 to help with testing and transition to better lookups
+- fbc: passing byval constructor preference: prefer A.constructor( B ) instead of of B.operator CAST() as A + A.constructor() when passing UDT by value - this is to fix some inconsistencies in the rules when converting by construction one type to another
+- fbc: only up-cast initializers when needed.  New behaviour is to try matching initializers without up-casting before matching with up-casting.
 
 [added]
 - gas/gas64: '.cif_sections' and '.cif_' directives for stack unwinding (adeyblue)
@@ -54,7 +56,12 @@ Version 1.10.0
 - fbc will restart the parser when #cmdline "-mt" is used or usage of any threaded functions automatically enable -mt.  This allows the compiler to parse the current module from the beginning and process any __FB_MT__ checks.
 - fbc: __fastcall support for gcc/gas 32-bit x86 - fbc passes first and second integer arguments in ECX and EDX registers respectively, caller cleans up stack.
 - fbc: __FB_QUERY_SYMBOL__( what, sym ) built-in macro for querying fbc symbol internals.  Added fbc-int/symbol.bi (Work in progress).
-- add '-z no-retinflts' command line option for code generation.  This option disables returning some structures (types) in floating point registers.  This is a work-around for different handling of structs returned by value on different tool chains / targets.
+- add '-z retinflts' command line option for code generation.  This option enables returning some structures (types) in floating point registers.  This is a work-around for different handling of structs returned by value on different tool chains / targets.
+- fbgfx.bi: add private function fb.__pixels() to return a pointer to the image data (paul doe)
+- fbc: add command line option and warning '-w upcast' to warn when up-casting would discard initializers
+- fbc headers: add ./inc/fblimits.bi for minimum and maximum value constants - for example fb.MIN_VALUE_INTEGER and fb.MAX_VALUE_INTEGER
+- In normal build of fbc, try to automatically use gcc to query the search path for a std c++ library.  This helps with dependency for tests/cpp and for some users that want to interop with c++
+- Add  makefile option DISABLE_STDCXX_PATH to disable usnig gcc to search for some c++ library path
 
 [fixed]
 - gas64: missing restoring of use of one virtual register on sqr for float (SARG)
@@ -105,6 +112,11 @@ Version 1.10.0
 - sf.net #834: Line continuation not handled during #if 0 skipping - fixed by ignoring line continuation characters and invalid directives - continue to preserve multiline comment parsing
 - fbc: internal: throw an error if __FB_EVAL__ would cause the parser to nest too deeply
 - fbc: improve code generation for structs returned by value and structs returned in registers - some structs where not handled correctly and had mismatched code generation when mixing modules with different fbc backends or linking again c libraries (e.g. gas+gcc or gas64+gcc) resulting in stack corruption or wrong values returned in structs
+- gas64: improve code generation for structs returned by value, fix optimization no 16, fix relocations for static / shared in shared libraries
+- fbgfx.bi: fix structures and declarations for #lang "qb" (paul doe)
+- gas64: fix structures passed by upcasting (SARG)
+- fbc: discard assignments and constructor calls in initializers that would write outside of the target when emitting initializer lists - previously, up-casted initializers were writing beyond the limits of the target and trashing memory
+- fix regression due to previous change on sf.net #917: optimization of 'm += s'.  The optimization failed to consider 's = s + expr' where expr might contain 's'.  In such a case, the optimization cannot be applied.
 
 
 Version 1.09.0

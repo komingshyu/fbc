@@ -111,7 +111,7 @@ enum FB_COMPOPT
 	FB_COMPOPT_SHOWINCLUDES         '' boolean: -showincludes
 	FB_COMPOPT_MODEVIEW             ''__FB_GUI__
 	FB_COMPOPT_NOCMDLINE            '' boolean: -z nocmdline, disable #cmdline directives
-	FB_COMPOPT_NORETURNINFLTS       '' boolean: -z no-returninflts, disable returning some structs in floating point registers
+	FB_COMPOPT_RETURNINFLTS         '' boolean: -z retinflts, enable returning some structs in floating point registers
 
 	FB_COMPOPTIONS
 end enum
@@ -137,10 +137,13 @@ enum FB_PDCHECK
 	FB_PDCHECK_CONSTNESS    = &h00000080
 	FB_PDCHECK_SUFFIX       = &h00000100
 	FB_PDCHECK_ERROR        = &h00000200  '' handle warnings as errors
+	FB_PDCHECK_UPCAST       = &h00000400
 
 	FB_PDCHECK_ALL          = &hffffffff
 
-	FB_PDCHECK_DEFAULT      = FB_PDCHECK_ALL xor ( FB_PDCHECK_NEXTVAR or FB_PDCHECK_SIGNEDNESS or FB_PDCHECK_CASTFUNCPTR or FB_PDCHECK_CONSTNESS or FB_PDCHECK_ERROR )
+	FB_PDCHECK_DEFAULT      = FB_PDCHECK_ALL xor ( _
+	                          FB_PDCHECK_NEXTVAR or FB_PDCHECK_SIGNEDNESS or FB_PDCHECK_CASTFUNCPTR _
+	                          or FB_PDCHECK_CONSTNESS or FB_PDCHECK_ERROR or FB_PDCHECK_UPCAST )
 end enum
 
 '' cpu types
@@ -317,7 +320,7 @@ type FBCMMLINEOPT
 	showincludes    as integer
 	modeview        as FB_MODEVIEW
 	nocmdline       as integer              '' dissallow #cmdline directive? (default = false)
-	noreturninflts  as integer              '' disable returning some structs in floating point registers
+	returninflts    as integer              '' enable returning some structs in floating point registers
 end type
 
 '' features allowed in the selected language
