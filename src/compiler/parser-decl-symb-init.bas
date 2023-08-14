@@ -10,16 +10,24 @@
 #include once "ir.bi"
 #include once "symb.bi"
 
+'' purpose of FB_INITCTX is to track state information for the
+'' current level of initialization and allow passing of necessary information
+'' byref to the parser funtions instead of pushing everything on the stack.
+
 type FB_INITCTX
-	sym         as FBSYMBOL ptr
-	dtype       as integer
-	subtype     as FBSYMBOL ptr
-	dimension   as integer
-	tree        as ASTNODE ptr
-	options     as FB_INIOPT
-	init_expr   as ASTNODE ptr
-	rec_cnt     as integer
+	sym         as FBSYMBOL ptr     '' symbol to initialize
+	dtype       as integer          '' dtype of symbol to initialize
+	subtype     as FBSYMBOL ptr     '' subtype of symbol to initialize
+	dimension   as integer          '' recursion in to array dimenstions
+	tree        as ASTNODE ptr      '' initree for this context (cInitializer())
+	options     as FB_INIOPT        '' behaviour / control options
+	init_expr   as ASTNODE ptr      '' initializing expression to hand back to parent
+	rec_cnt     as integer          '' current UDT recursion count in to hUDTInit()
+	last_ctx    as FB_INITCTX ptr   '' pointer to the last ctx to track global recursion
 end type
+
+'' track all FB_INITCTX in a stack
+dim shared top_ctx as FB_INITCTX ptr = NULL
 
 declare function hUDTInit _
 	( _
@@ -50,11 +58,14 @@ private function hDoAssign _
 		byval no_fake as integer = FALSE _
 	) as integer
 
-	if( astCheckASSIGNToType( ctx.dtype, ctx.subtype, expr ) = FALSE ) then
-		'' check if it's a cast
+	dim as integer no_upcast = any, check_upcast = FALSE
+	no_upcast = ((ctx.options and FB_INIOPT_NOUPCAST) <> 0)
 
-		'' pass the initializing expression back to parent if it fails here
-		ctx.init_expr = expr
+	'' pass the initializing expression back to parent if it fails here
+	ctx.init_expr = expr
+
+	if( astCheckASSIGNToType( ctx.dtype, ctx.subtype, expr, no_upcast ) = FALSE ) then
+		'' check if it's a cast
 
 		'' fail initializers that could be assigned with a cast to a base type.
 		'' This allows passing an initializer back to an exact matched parent.
@@ -74,9 +85,16 @@ private function hDoAssign _
 			astDelTree( expr )
 			expr = astNewCONSTz( ctx.dtype, ctx.subtype )
 		end if
+
+	else
+		'' astCheckASSIGNToType() succeeded so we should expect the
+		'' assignment of the expression to be successful, but we need
+		'' to tell astTypeIniAddAssign() to check for up-casting.
+
+		check_upcast = TRUE
 	end if
 
-	astTypeIniAddAssign( ctx.tree, expr, ctx.sym, ctx.dtype, ctx.subtype )
+	astTypeIniAddAssign( ctx.tree, expr, ctx.sym, ctx.dtype, ctx.subtype, check_upcast )
 
 	function = TRUE
 end function
@@ -230,8 +248,18 @@ private function hArrayInit _
 			end if
 		else
 			if( typeGetDtAndPtrOnly( ctx.dtype ) = FB_DATATYPE_STRUCT ) then
-				if( hUDTInit( ctx ) = FALSE ) then
-					exit function
+				if( isArray ) then
+					var options = ctx.options
+					ctx.options and= not FB_INIOPT_NOUPCAST
+					var ok = hUDTInit( ctx )
+					ctx.options = options
+					if( ok = FALSE ) then
+						exit function
+					end if
+				else
+					if( hUDTInit( ctx ) = FALSE ) then
+						exit function
+					end if
 				end if
 			else
 				if( hElmInit( ctx, no_fake ) = FALSE ) then
@@ -335,7 +363,6 @@ private function hArrayInit _
 end function
 
 private function hUDTInit( byref ctx as FB_INITCTX ) as integer
-	static as integer rec_cnt = 0
 
 	dim as integer elm_cnt = any
 	dim as longint lgt = any, baseofs = any, pad_lgt = any
@@ -393,10 +420,10 @@ private function hUDTInit( byref ctx as FB_INITCTX ) as integer
 
 		if( is_ctorcall ) then
 			return astTypeIniAddCtorCall( ctx.tree, ctx.sym, expr, ctx.dtype, ctx.subtype ) <> NULL
-		else
-			'' try to assign it (do a shallow copy)
-			return hDoAssign( ctx, expr )
 		end if
+
+		'' try to assign it (do a shallow copy)
+		return hDoAssign( ctx, expr )
 	end if
 
 	dim as integer parenth = TRUE, comma = FALSE
@@ -461,8 +488,21 @@ private function hUDTInit( byref ctx as FB_INITCTX ) as integer
 			ctx.options or= FB_INIOPT_ISOBJ
 		end if
 
+		'' If up-casting is allowed, first try the initializer without
+		'' up-casting since this should try to match the intializer to
+		'' the best fit base.  Only if that fails then fall back on
+		'' using the first up-cast available.
+		var ok = FALSE
+		if( ( ctx.options and FB_INIOPT_NOUPCAST ) = 0 ) then
+			ctx.options or= FB_INIOPT_NOUPCAST
+			ok = hArrayInit( ctx, TRUE )
+			ctx.options and= not FB_INIOPT_NOUPCAST
+		else
+			ok = hArrayInit( ctx, TRUE )
+		end if
+
 		'' element assignment failed?
-		if( hArrayInit( ctx, TRUE ) = FALSE ) then
+		if( ok = FALSE ) then
 			'' not first or nothing passed back?
 			if( (fld <> first) or (ctx.init_expr = NULL) ) then
 				errReport( FB_ERRMSG_INVALIDDATATYPES, TRUE )
@@ -486,22 +526,24 @@ private function hUDTInit( byref ctx as FB_INITCTX ) as integer
 					errReport( FB_ERRMSG_EXPECTEDRPRNT )
 					'' error recovery: skip until next ')'
 					hSkipUntil( CHAR_RPRNT, TRUE )
-				end if
-				lexSkipToken( )
+				else
+					lexSkipToken( )
 
-				'' Undo the astTypeIniScopeBegin() done above.
-				'' We're assigning to the UDT, not to a field,
-				'' so there should be no typeini scope.
-				assert( ctx.tree->r->class = AST_NODECLASS_TYPEINI_SCOPEINI )
-				astTypeIniRemoveLastNode( ctx.tree )
+					'' Undo the astTypeIniScopeBegin() done above.
+					'' We're assigning to the UDT, not to a field,
+					'' so there should be no typeini scope.
+					assert( ctx.tree->r->class = AST_NODECLASS_TYPEINI_SCOPEINI )
+					astTypeIniRemoveLastNode( ctx.tree )
+				end if
 			end if
 
 			if( is_ctorcall ) then
 				return astTypeIniAddCtorCall( ctx.tree, ctx.sym, expr, ctx.dtype, ctx.subtype ) <> NULL
-			else
-				'' try to assign it (do a shallow copy)
-				return hDoAssign( ctx, expr, TRUE )
-			end if
+			endif
+
+			'' try to assign it (do a shallow copy)
+			return hDoAssign( ctx, expr, TRUE )
+
 		end if
 
 		'' next field to initialize
@@ -597,11 +639,17 @@ function cInitializer _
 
 	if( symbIsVar( sym ) ) then
 		is_local = symbIsLocal( sym )
+
 	'' param, struct/class field or anon-udt
 	else
 		is_local = FALSE
 	end if
 
+	'' track recursion in to cInitializer() using a stack
+	ctx.last_ctx = top_ctx
+	top_ctx = @ctx
+
+	'' set-up our current ctx
 	ctx.options = options
 	ctx.sym = sym
 	ctx.dimension = -1
@@ -627,6 +675,8 @@ function cInitializer _
 			ok = hElmInit( ctx )
 		end if
 	end if
+
+	top_ctx = ctx.last_ctx
 
 	astTypeIniEnd( ctx.tree, (options and FB_INIOPT_ISINI) <> 0 )
 

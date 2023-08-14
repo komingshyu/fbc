@@ -58,7 +58,7 @@ const FB_DATATYPE_LAST_NUMERIC = FB_DATATYPE_DOUBLE
 
 const FB_DATATYPES = (FB_DATATYPE_XMMWORD - FB_DATATYPE_VOID) + 1
 
-const FB_DT_TYPEMASK        = &b00000000000000000000000000011111 '' max 32 built-in dts
+const FB_DT_TYPEMASK        = &b00000000000000000000000000011111 '' max 32 built-in datatypes
 const FB_DT_PTRMASK         = &b00000000000000000000000111100000 '' level of pointer indirection
 const FB_DT_CONSTMASK       = &b00000000000000111111111000000000 '' PTRLEVELS + 1 bit-masks
 const FB_DATATYPE_REFERENCE = &b00000000000010000000000000000000 '' used for mangling BYREF parameters
@@ -253,21 +253,15 @@ enum FB_SYMBOPT
 	FB_SYMBOPT_NODUPCHECK       = &h00000080
 end enum
 
-'' options when looking up symbols
-enum FB_SYMBLOOKUPOPT
-	FB_SYMBLOOKUPOPT_NONE    = &h00000000
-
-	FB_SYMBLOOKUPOPT_PROPGET    = &h00000001  '' match property get and not property set
-	FB_SYMBLOOKUPOPT_BOP_OVL    = &h00000002  '' exact match at least one parameter
-
-	'' symbFindCastOvlProc(), hCheckCastOvl()
-	FB_SYMBLOOKUPOPT_EXPLICIT   = &h00000004  '' require explicit exact match
-
-	'' symbFindCastOvlProc(), symbFindCtorOvlProc()
-	'' symbFindClosestOvlProc(), hCheckOvlParam()
-	FB_SYMBLOOKUPOPT_NO_ERROR   = &h00000008  '' don't report errors, return to caller
-	FB_SYMBLOOKUPOPT_NO_CTOR    = &h00000010  '' don't find matching constructors
-	FB_SYMBLOOKUPOPT_NO_CAST    = &h00000020  '' don't find matching cast operators
+'' options when finding symbols
+enum FB_SYMBFINDOPT
+	FB_SYMBFINDOPT_NONE         = &h00000000
+	FB_SYMBFINDOPT_PROPGET      = &h00000001  '' match property get and not property set
+	FB_SYMBFINDOPT_BOP_OVL      = &h00000002  '' exact match at least one parameter
+	FB_SYMBFINDOPT_EXPLICIT     = &h00000004  '' require explicit exact match
+	FB_SYMBFINDOPT_NO_ERROR     = &h00000008  '' don't report errors, return to caller
+	FB_SYMBFINDOPT_NO_CTOR      = &h00000010  '' don't find matching constructors
+	FB_SYMBFINDOPT_NO_CAST      = &h00000020  '' don't find matching cast operators
 end enum
 
 ''
@@ -285,8 +279,8 @@ end enum
 enum FB_MANGLEOPT
 	FB_MANGLEOPT_NONE         =   0  '' no special options
 	FB_MANGLEOPT_KEEPTOPCONST =   1  '' keep the top-level const when mangling
-	FB_MANGLEOPT_HASPTR       =   2  '' mangled type has is a pointer type
-	FB_MANGLEOPT_HASREF       =   4  '' mangled type has is reference type
+	FB_MANGLEOPT_HASPTR       =   2  '' mangled type has/is a pointer type
+	FB_MANGLEOPT_HASREF       =   4  '' mangled type has/is reference type
 	FB_MANGLEOPT_NESTED       =   8  '' mangled type is nested in another type
 end enum
 
@@ -634,7 +628,7 @@ type FB_PROCEXT
 	stmtnum         as integer
 	priority        as integer
 	gosub           as FB_PROCGSB
-	base_initree        as ASTNODE_ ptr  '' base() ctorcall/initializer given in constructor bodies
+	base_initree    as ASTNODE_ ptr             '' base() ctorcall/initializer given in constructor bodies
 
 	'' virtual methods:
 	''    vtable array index, location of the procptr in the vtbl
@@ -734,6 +728,16 @@ type FBVAR_DATA
 	prev            as FBSYMBOL_ ptr
 end type
 
+type FBS_CONST
+	union                                       '' extends FBVALUE
+		value       as FBVALUE
+		s           as FBSYMBOL_ ptr
+		i           as longint
+		f           as double
+	end union
+	hassuffix       as integer
+end type
+
 type FBS_VAR
 	union
 		littext     as zstring ptr
@@ -793,11 +797,11 @@ type FBSYMBOL
 	mangling        as short                    '' FB_MANGLING
 
 	lgt         as longint
-	ofs         as longint                  '' for local vars, args, UDT's and fields
+	ofs         as longint                      '' for local vars, args, UDT's and fields
 
 	union
 		var_        as FBS_VAR
-		val         as FBVALUE  '' constants
+		val         as FBS_CONST                '' constants
 		udt         as FBS_STRUCT
 		enum_       as FBS_ENUM
 		proc        as FBS_PROC
@@ -1024,7 +1028,7 @@ declare function symbFindOverloadProc _
 	( _
 		byval parent as FBSYMBOL ptr, _
 		byval proc as FBSYMBOL ptr, _
-		byval options as FB_SYMBLOOKUPOPT = FB_SYMBLOOKUPOPT_NONE _
+		byval options as FB_SYMBFINDOPT = FB_SYMBFINDOPT_NONE _
 	) as FBSYMBOL ptr
 
 declare function symbFindOpOvlProc _
@@ -1040,7 +1044,7 @@ declare function symbFindClosestOvlProc _
 		byval params as integer, _
 		byval arg_head as FB_CALL_ARG ptr, _
 		byval err_num as FB_ERRMSG ptr, _
-		byval options as FB_SYMBLOOKUPOPT = FB_SYMBLOOKUPOPT_NONE _
+		byval options as FB_SYMBFINDOPT = FB_SYMBFINDOPT_NONE _
 	) as FBSYMBOL ptr
 
 declare function symbFindBopOvlProc _
@@ -1079,7 +1083,7 @@ declare function symbFindCastOvlProc _
 		byval to_subtype as FBSYMBOL ptr, _
 		byval expr as ASTNODE ptr, _
 		byval err_num as FB_ERRMSG ptr, _
-		byval options as FB_SYMBLOOKUPOPT = FB_SYMBLOOKUPOPT_NONE _
+		byval options as FB_SYMBFINDOPT = FB_SYMBFINDOPT_NONE _
 	) as FBSYMBOL ptr
 
 declare function symbFindCtorOvlProc _
@@ -1088,7 +1092,7 @@ declare function symbFindCtorOvlProc _
 		byval expr as ASTNODE ptr, _
 		byval arg_mode as FB_PARAMMODE, _
 		byval err_num as FB_ERRMSG ptr, _
-		byval options as FB_SYMBLOOKUPOPT = FB_SYMBLOOKUPOPT_NONE _
+		byval options as FB_SYMBFINDOPT = FB_SYMBFINDOPT_NONE _
 	) as FBSYMBOL ptr
 
 declare function symbFindCtorProc _
@@ -2257,7 +2261,7 @@ declare function symbCloneSimpleStruct( byval sym as FBSYMBOL ptr ) as FBSYMBOL 
 
 #define symbIsNameSpace(s) (s->class = FB_SYMBCLASS_NAMESPACE)
 
-#define symbGetConstVal( sym )   (@((sym)->val))
+#define symbGetConstVal( sym )   (@((sym)->val.value))
 #define symbGetConstStr( sym )   ((sym)->val.s)
 #define symbGetConstInt( sym )   ((sym)->val.i)
 #define symbGetConstFloat( sym ) ((sym)->val.f)
@@ -2701,7 +2705,7 @@ declare sub symbDumpChain( byval chain_ as FBSYMCHAIN ptr )
 declare sub symbDumpLookup( byval id as zstring ptr )
 
 '' FBARRAY: 6 pointer/integer fields + the dimTB with 3 integer fields per dimension
-#define symbDescriptorHasRoomFor( sym, dimensions ) (symbGetLen( sym ) = env.pointersize * (((dimensions) * 3) + 6))
+#define symbDescriptorHasRoomFor( sym, dimensions ) (symbGetLen( sym ) >= env.pointersize * (((dimensions) * 3) + 6))
 #endif
 
 declare function symbDumpPrettyToStr( byval sym as FBSYMBOL ptr ) as string

@@ -105,6 +105,7 @@
 #   BUILD_PREFIX     automatically set depending on the target but can override for special builds where the
 #                    build tools have different file naming than the target to build (i.e. cross compiling)
 #   DISABLE_GAS64_DEBUG    use "-d DISABLE_GAS64_DEBUG" (see below)
+#   DISABLE_STDCXX_PATH    tells fbc to not search for some libstdc++/libc++ depending on target platform
 # compiler source code configuration (FBCFLAGS, FBLFLAGS):
 #   -d ENABLE_STANDALONE     build for a self-contained installation
 #   -d ENABLE_SUFFIX=-0.24   assume FB's lib dir uses the given suffix (non-standalone only)
@@ -113,6 +114,7 @@
 #   -d ENABLE_STRIPALL       configure fbc to pass down '--strip-all' to linker by default
 #   -d FBSHA1=some-sha-1     store 'some-sha-1' in the compiler for version information
 #   -d DISABLE_GAS64_DEBUG   disable gas64 debugging comments in asm files even if __FB_DEBUG__ is defined (-g)
+#   -d DISABLE_STDCXX_PATH    tells fbc to not search for some libstdc++/libc++ depending on target platform
 #
 # internal makefile configuration (but can override):
 #   libsubdir       override the library directory - default is set depending on TARGET
@@ -571,6 +573,9 @@ endif
 ifdef DISABLE_GAS64_DEBUG
   ALLFBCFLAGS += -d DISABLE_GAS64_DEBUG
 endif
+ifdef DISABLE_STDCXX_PATH
+  ALLFBCFLAGS += -d DISABLE_STDCXX_PATH
+endif
 
 ALLFBCFLAGS += $(FBCFLAGS) $(FBFLAGS)
 ALLFBLFLAGS += $(FBLFLAGS) $(FBFLAGS)
@@ -622,7 +627,6 @@ LIBFBRT_BI  := $(sort $(foreach i,$(FBRT_DIRS),$(wildcard $(i)/*.bi)))
 LIBFBRT_BAS := $(sort $(foreach i,$(FBRT_DIRS),$(patsubst $(i)/%.bas,$(libfbrtobjdir)/%.o,$(wildcard $(i)/*.bas))))
 LIBFBRT_S   := $(sort $(foreach i,$(FBRT_DIRS),$(patsubst $(i)/%.s,$(libfbrtobjdir)/%.o,$(wildcard $(i)/*.s))))
 
-LIBFBRT_BAS := $(filter-out $(libfbrtobjdir)/signals.o, $(LIBFBRT_BAS))
 LIBFBRTPIC_BAS   := $(patsubst $(libfbrtobjdir)/%,$(libfbrtpicobjdir)/%,$(LIBFBRT_BAS))
 LIBFBRTMT_BAS    := $(patsubst $(libfbrtobjdir)/%,$(libfbrtmtobjdir)/%,$(LIBFBRT_BAS))
 LIBFBRTMT_S      := $(patsubst $(libfbrtobjdir)/%,$(libfbrtmtobjdir)/%,$(LIBFBRT_S))
@@ -818,14 +822,22 @@ ifeq ($(TARGET_OS),dos)
   # Avoid hitting the command line length limit (the libfbrt.a ar command line
   # is very long...)
 	$(QUIET)rm -f $@
+ifneq ($(LIBFBRT_C),)
 	$(QUIET)cp $(LIBFBRT_C) $(libfbrtobjdir)
+endif
 	$(QUIET_AR)$(AR) rcs $@ $(libfbrtobjdir)/*.o
 else ifneq ($(findstring MSYS_NT,$(shell uname)),)
 	$(QUIET)rm -f $@
+ifneq ($(LIBFBRT_C),)
 	$(QUIET)cp $(LIBFBRT_C) $(libfbrtobjdir)
+endif
 	$(QUIET_AR)$(AR) rcs $@ $(libfbrtobjdir)/*.o
 else
+ifneq ($(LIBFBRT_C),)
 	$(QUIET_AR)rm -f $@; cp $(LIBFBRT_C) $(libfbrtobjdir); $(AR) rcs $@ $^
+else
+	$(QUIET_AR)rm -f $@; $(AR) rcs $@ $^
+endif
 endif
 $(LIBFBRT_BAS): $(libfbrtobjdir)/%.o: %.bas $(LIBFBRT_BI) | $(libfbrtobjdir)
 	$(QUIET_FBC)$(FBC) $(ALLFBRTCFLAGS) -c $< -o $@
@@ -842,14 +854,22 @@ ifeq ($(TARGET_OS),dos)
   # Avoid hitting the command line length limit (the libfbrt.a ar command line
   # is very long...)
 	$(QUIET)rm -f $@
+ifneq ($(LIBFBRTMT_C),)
 	$(QUIET)cp $(LIBFBRTMT_C) $(libfbrtmtobjdir)
+endif
 	$(QUIET_AR)$(AR) rcs $@ $(libfbrtmtobjdir)/*.o
 else ifneq ($(findstring MSYS_NT,$(shell uname)),)
 	$(QUIET)rm -f $@
+ifneq ($(LIBFBRTMT_C),)
 	$(QUIET)cp $(LIBFBRTMT_C) $(libfbrtmtobjdir)
+endif
 	$(QUIET_AR)$(AR) rcs $@ $(libfbrtmtobjdir)/*.o
 else
+ifneq ($(LIBFBRTMT_C),)
 	$(QUIET_AR)rm -f $@; cp $(LIBFBRTMT_C) $(libfbrtmtobjdir); $(AR) rcs $@ $^
+else
+	$(QUIET_AR)rm -f $@; $(AR) rcs $@ $^
+endif
 endif
 $(LIBFBRTMT_BAS): $(libfbrtmtobjdir)/%.o: %.bas $(LIBFBRT_BI) | $(libfbrtmtobjdir)
 	$(QUIET_FBC)$(FBC) -mt -d ENABLE_MT $(ALLFBRTCFLAGS) -c $< -o $@

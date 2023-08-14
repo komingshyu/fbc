@@ -85,6 +85,7 @@ enum AST_OPOPT
 	AST_OPOPT_DONTCHKPTR    = &h00000010
 	AST_OPOPT_DONTCHKOPOVL  = &h00000020
 	AST_OPOPT_ISINI         = &h00000040
+	AST_OPOPT_DOINVERSE     = &h00000080  '' indicates that logic needs to be inverted by the backend (i.e. branching)
 
 	AST_OPOPT_DOPTRARITH    = AST_OPOPT_LPTRARITH or AST_OPOPT_RPTRARITH
 
@@ -114,6 +115,16 @@ end type
 type AST_NODE_ARG
 	mode            as integer                      '' to pass NULL's to byref args, etc
 	lgt             as longint                      '' length, used to push UDT's by value
+end type
+
+type AST_NODE_CONST
+	union                                           '' extends FBVALUE
+		value       as FBVALUE
+		s           as FBSYMBOL_ ptr
+		i           as longint
+		f           as double
+	end union
+	hassuffix       as integer                      '' TRUE = original constant had a suffix
 end type
 
 type AST_NODE_VAR
@@ -191,7 +202,7 @@ type AST_NODE_TYPEINI
 	ofs             as longint
 	union
 		bytes       as longint
-		elements    as longint
+		elements    as longint            '' TYPEINI_CTORLIST only
 	end union
 	scp             as FBSYMBOL ptr
 	lastscp         as FBSYMBOL ptr
@@ -269,7 +280,7 @@ type ASTNODE
 	vector          as integer                      '' 0, 2, 3, or 4 (> 2 for single only)
 
 	union
-		val         as FBVALUE    '' CONST nodes
+		val         as AST_NODE_CONST               '' CONST nodes
 		var_        as AST_NODE_VAR
 		idx         as AST_NODE_IDX
 		ptr         as AST_NODE_PTR
@@ -883,8 +894,6 @@ declare function astNewNIDXARRAY _
 		byval expr as ASTNODE ptr _
 	) as ASTNODE ptr
 
-declare function astRemoveNIDXARRAY( byval n as ASTNODE ptr ) as ASTNODE ptr
-
 declare function astNewNode _
 	( _
 		byval class_ as integer, _
@@ -918,14 +927,16 @@ declare sub astCheckConst _
 declare function astCheckASSIGN _
 	( _
 		byval l as ASTNODE ptr, _
-		byval r as ASTNODE ptr _
+		byval r as ASTNODE ptr, _
+		byval no_upcast as integer _
 	) as integer
 
 declare function astCheckASSIGNToType _
 	( _
 		byval ldtype as integer, _
 		byval lsubtype as FBSYMBOL ptr, _
-		byval r as ASTNODE ptr _
+		byval r as ASTNODE ptr, _
+		byval no_upcast as integer _
 	) as integer
 
 declare function astCheckByrefAssign _
@@ -993,7 +1004,8 @@ declare function astTypeIniAddAssign _
 		byval expr as ASTNODE ptr, _
 		byval sym as FBSYMBOL ptr, _
 		byval dtype as integer = FB_DATATYPE_INVALID, _
-		byval subtype as FBSYMBOL ptr = NULL _
+		byval subtype as FBSYMBOL ptr = NULL, _
+		byval check_upcast as integer = FALSE _
 	) as ASTNODE ptr
 
 declare function astTypeIniAddCtorCall _
@@ -1467,7 +1479,7 @@ declare function astLoadMACRO( byval n as ASTNODE ptr ) as IRVREG ptr
 
 #define astIsCAST(n) (n->class = AST_NODECLASS_CONV)
 
-#define astConstGetVal( n ) (@(n)->val)
+#define astConstGetVal( n ) (@(n)->val.value)
 #define astConstGetFloat( n ) ((n)->val.f)
 #define astConstGetInt( n ) ((n)->val.i)
 #define astConstGetUint( n ) cunsg( (n)->val.i )

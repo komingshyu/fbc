@@ -973,6 +973,32 @@ private function hDefIifW_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as in
 
 end function
 
+'' If FB_QUERY_SYMBOL changes, update inc/fbc-int/symbol.bi FB_QUERY_SYMBOL
+''
+enum FB_QUERY_SYMBOL explicit
+
+	'' query type
+	symbclass  = &h0000     '' return the symbol's class as FB_SYMBCLASS
+	datatype   = &h0001     '' return symbol's type as FB_DATATYPE
+	dataclass  = &h0002     '' return the symbol's data class as FB_DATACLASS
+	typename   = &h0003     '' return the typename as text
+	typenameid = &h0004     '' return the typename as text with specical characters replaced with '_'
+	mangleid   = &h0005     '' return the decorated (mangled) type name (WIP)
+	exists     = &h0006     '' return if the symbol name / identifier is exists
+	querymask  = &h00ff     '' mask for query values
+
+	'' filters
+	'' if no filter is given, and filtermask is zero, then the default methods
+	'' are used for symbol lookup.  If filtermask is non-zero, then only use
+	'' the specified methods for symbol lookup
+
+	identifier = &h0100     '' use identifier & type name symbol lookups
+	typeofexpr = &h0200     '' use TYPEOF/expression
+
+	filtermask = &hff00     '' mask for filter values
+
+end enum
+
 private function hDefQuerySymZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum as integer ptr ) as string
 
 	'' __FB_QUERY_SYMBOL__( WHAT, SYM )
@@ -993,10 +1019,13 @@ private function hDefQuerySymZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum 
 		dim as long whatvalue = clng( whatstr )
 
 		if( hStr2long( whatstr, whatvalue ) ) then
-			dim as integer dtype, is_fixlenstr
+			dim as FB_DATATYPE dtype = FB_DATATYPE_INVALID
+			dim as integer is_fixlenstr, retry = FALSE
 			dim as longint lgt
-			dim as FBSYMBOL ptr subtype
-			dim as FBSYMBOL ptr sym
+			dim as FBSYMBOL ptr sym = NULL, subtype = NULL
+			dim as long queryvalue = whatvalue and FB_QUERY_SYMBOL.querymask
+			dim as long filtervalue = whatvalue and FB_QUERY_SYMBOL.filtermask
+
 			var errmsg = FB_ERRMSG_OK
 
 			'' create a lightweight context push
@@ -1010,14 +1039,111 @@ private function hDefQuerySymZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum 
 			lex.ctx->defptr = lex.ctx->deftext.data
 			lex.ctx->deflen += len( *sexpr )
 
-			cTypeOf( dtype, subtype, lgt, is_fixlenstr, sym )
+			'' if filtervalue is zero then set the default methods to use for
+			'' look-up depending on what we are looking for
+			if( filtervalue = 0 ) then
+				select case queryvalue
+				case FB_QUERY_SYMBOL.typename, _
+				     FB_QUERY_SYMBOL.typenameid, _
+				     FB_QUERY_SYMBOL.mangleid, _
+				     FB_QUERY_SYMBOL.exists
 
-			select case whatvalue
-			case 0 '' dtype
-				res = str( dtype )
-			case 1 '' data class
-				res = str( typeGetClass( dtype ) )
-			case 2 '' symb class
+					filtervalue or= FB_QUERY_SYMBOL.identifier
+
+				'' case FB_QUERY_SYMBOL.symbclass, _
+				''      FB_QUERY_SYMBOL.dataclass, _
+				''      FB_QUERY_SYMBOL.datatype
+				case else
+					filtervalue or= FB_QUERY_SYMBOL.identifier or FB_QUERY_SYMBOL.typeofexpr
+
+				end select
+			end if
+
+			'' identifier filter?
+			if( (filtervalue and FB_QUERY_SYMBOL.identifier) <> 0 ) then
+
+				'' Try a lookup of the symbol and ideally suppress all errors.  These
+				'' will never be used as for any access or expression in emitted code
+				'' so we should try to be as persmissive as possible.
+
+				select case lexGetClass( )
+				case FB_TKCLASS_IDENTIFIER, FB_TKCLASS_KEYWORD, _
+				     FB_TKCLASS_QUIRKWD, FB_TKCLASS_OPERATOR
+
+					sym = cIdentifierOrUDTMember( )
+				end select
+
+				'' for some symbols, we maybe want to reset and try a TYPEOF below
+				'' or parse more for the case of UDT type members
+
+				if( sym ) then
+					select case symbGetClass( sym )
+					case FB_SYMBCLASS_KEYWORD
+						dtype = symbGetFullType( sym )
+						if( dtype = FB_DATATYPE_INVALID ) then
+							select case queryvalue
+							case FB_QUERY_SYMBOL.symbclass, _
+							     FB_QUERY_SYMBOL.exists
+								lexSkipToken( )
+							case else
+								sym = NULL
+								retry = TRUE
+							end select
+						else
+							lexSkipToken( )
+						end if
+					case FB_SYMBCLASS_STRUCT
+						lexSkipToken( )
+						dtype = symbGetFullType( sym )
+						subtype = sym
+						'' '.'?
+						if( lexGetToken( ) = CHAR_DOT ) then
+							cUdtTypeMember( dtype, subtype, lgt, is_fixlenstr, sym )
+						end if
+					case else
+						lexSkipToken( )
+						dtype = symbGetFullType( sym )
+						subtype = symbGetSubtype( sym )
+					end select
+				end if
+
+				'' if we get to here with a symbol, but we still have more text to
+				'' parse after what we've got, assume that the user meant to include
+				'' more and re-try as TYPEOF(sym) below.  For example, if sym = 'integer ptr'
+				'' then, integer we intially get 'integer' returned as a keyword, but
+				'' because there is more, try as typeof.
+
+				'' not the end of 'sym'? retry as TYPEOF
+				if( lexGetToken( ) <> FB_TK_EOF ) then
+					retry = TRUE
+				end if
+
+				if( retry ) then
+					sym = NULL
+
+					'' reset the current lexer context and refresh the text to parse.
+					lexInit( FALSE, TRUE )
+
+					DZstrAssign( lex.ctx->deftext, *sexpr )
+					lex.ctx->defptr = lex.ctx->deftext.data
+					lex.ctx->deflen += len( *sexpr )
+				end if
+
+			end if
+
+			'' typeof/expression filter?
+			if( (filtervalue and FB_QUERY_SYMBOL.typeofexpr) <> 0 ) then
+
+				'' no sym? try TYPEOF( sym ) ...
+				if( sym = NULL ) then
+					cTypeOf( dtype, subtype, lgt, is_fixlenstr, sym )
+				end if
+
+			end if
+
+			'' return results
+			select case queryvalue
+			case FB_QUERY_SYMBOL.symbclass
 				if( sym ) then
 					res = str( symbGetClass( sym ) )
 				elseif( subtype ) then
@@ -1025,9 +1151,34 @@ private function hDefQuerySymZ_cb( byval argtb as LEXPP_ARGTB ptr, byval errnum 
 				else
 					res = str( 0 )
 				end if
+			case FB_QUERY_SYMBOL.datatype
+				res = str( dtype )
+			case FB_QUERY_SYMBOL.dataclass
+				res = str( typeGetClass( dtype ) )
+			case FB_QUERY_SYMBOL.typename, FB_QUERY_SYMBOL.typenameid
+				res = ucase( symbTypeToStr( dtype, subtype, lgt, is_fixlenstr ) )
+				if( queryvalue = FB_QUERY_SYMBOL.typenameid ) then
+					hReplaceChar( res, asc(" "), asc("_") )
+					hReplaceChar( res, asc("."), asc("_") )
+					hReplaceChar( res, asc("("), asc("_") )
+					hReplaceChar( res, asc(")"), asc("_") )
+					hReplaceChar( res, asc("*"), asc("_") )
+				end if
+			case FB_QUERY_SYMBOL.mangleid
+				if( sym ) then
+					symbMangleType( res, dtype, sym )
+					symbMangleResetAbbrev( )
+				elseif( subtype ) then
+					symbMangleType( res, dtype, subtype )
+					symbMangleResetAbbrev( )
+				else
+					res = str(0)
+				end if
+			case FB_QUERY_SYMBOL.exists
+				res = str( sym <> NULL )
 			case else
 				*errnum = FB_ERRMSG_SYNTAXERROR
-				res = str( 0 )
+				res = str( -1 )
 			end select
 
 			lex.ctx->reclevel -= 1

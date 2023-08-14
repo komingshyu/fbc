@@ -65,6 +65,7 @@ type FBTOKEN
 	union
 		prdpos      as integer                  '' period '.' pos in symbol names
 		hasesc      as integer                  '' any '\' in literals
+		hassuffix   as integer                  '' numeric literal has suffix
 	end union
 	suffixchar      as integer
 
@@ -95,6 +96,7 @@ type LEX_TKCTX
 	currmacro       as FBSYMBOL ptr             '' used to check macro recursion
 
 	kwdns           as FBSYMBOL ptr             '' used by the PP
+	is_fb_eval      as integer                  '' TRUE if inside an FB_EVAL
 
 	'' last #define's text
 	deflen          as integer
@@ -228,12 +230,10 @@ declare sub lexNextToken _
 
 declare function lexCurrentChar _
 	( _
-		byval skipwhitespc as integer = FALSE _
 	) as uinteger
 
 declare function lexGetLookAheadChar _
 	( _
-		byval skipwhitespc as integer = FALSE _
 	) as uinteger
 
 declare function lexGetLookAheadChar2 _
@@ -241,6 +241,8 @@ declare function lexGetLookAheadChar2 _
 	) as uinteger
 
 declare sub lexEatChar( )
+
+declare function lexEatWhitespace( ) as integer
 
 declare function lexPeekCurrentLine _
 	( _
@@ -286,6 +288,8 @@ declare function hMatch _
 #define lexGetHasSlash( ) lex.ctx->head->hasesc
 
 #define lexGetSuffixChar( ) lex.ctx->head->suffixchar
+
+#define lexGetLiteralHasSuffix( ) lex.ctx->head->hassuffix
 
 #define lexGetHead( ) lex.ctx->head
 
