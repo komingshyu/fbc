@@ -150,7 +150,7 @@
 FBC := fbc
 CFLAGS := -Wfatal-errors -O2
 # Avoid gcc exception handling bloat
-CFLAGS += -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables
+CFLAGS += -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables --sysroot $(SYSROOT)
 FBFLAGS := -maxerr 1
 AS = $(TARGET_PREFIX)as
 AR = $(TARGET_PREFIX)ar
