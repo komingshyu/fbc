@@ -300,6 +300,23 @@ sub lexEatChar( )
 	end if
 end sub
 
+function lexEatWhitespace( ) as integer
+
+	function = FALSE
+
+	if( lex.ctx->currchar = UINVALID ) then
+		lex.ctx->currchar = hReadChar( )
+	end if
+
+	do while( (lex.ctx->currchar = CHAR_TAB) or (lex.ctx->currchar = CHAR_SPACE) )
+		lex.ctx->after_space = TRUE
+		lexEatChar( )
+		lex.ctx->currchar = hReadChar( )
+		function = TRUE
+	loop
+
+end function
+
 '':::::
 private sub hSkipChar
 
@@ -335,19 +352,10 @@ end sub
 '':::::
 function lexCurrentChar _
 	( _
-		byval skipwhitespc as integer = FALSE _
 	) as uinteger
 
 	if( lex.ctx->currchar = UINVALID ) then
 		lex.ctx->currchar = hReadChar( )
-	end if
-
-	if( skipwhitespc ) then
-		do while( (lex.ctx->currchar = CHAR_TAB) or (lex.ctx->currchar = CHAR_SPACE) )
-			lex.ctx->after_space = TRUE
-			lexEatChar( )
-			lex.ctx->currchar = hReadChar( )
-		loop
 	end if
 
 	function = lex.ctx->currchar
@@ -357,20 +365,11 @@ end function
 '':::::
 function lexGetLookAheadChar _
 	( _
-		byval skipwhitespc as integer = FALSE _
 	) as uinteger
 
 	if( lex.ctx->lahdchar1 = UINVALID ) then
 		hSkipChar( )
 		lex.ctx->lahdchar1 = hReadChar( )
-	end if
-
-	if( skipwhitespc ) then
-		do while( (lex.ctx->lahdchar1 = CHAR_TAB) or (lex.ctx->lahdchar1 = CHAR_SPACE) )
-			lex.ctx->after_space = TRUE
-			hSkipChar( )
-			lex.ctx->lahdchar1 = hReadChar( )
-		loop
 	end if
 
 	function = lex.ctx->lahdchar1
@@ -1129,6 +1128,7 @@ private sub hReadNumber( byref t as FBTOKEN, byval flags as LEXCHECK )
 	var pnum = @t.text[0]
 	*pnum = 0
 	t.len = 0
+	t.hassuffix = false
 
 	select case as const lexCurrentChar( )
 	'' integer part
@@ -1178,6 +1178,7 @@ private sub hReadNumber( byref t as FBTOKEN, byval flags as LEXCHECK )
 			if( (flags and LEXCHECK_NOLETTERSUFFIX) = 0 ) then
 				select case lexCurrentChar( )
 				case CHAR_UUPP, CHAR_ULOW
+					t.hassuffix = TRUE
 					lexEatChar( )
 					t.dtype = typeToUnsigned( t.dtype )
 					have_u_suffix = TRUE
@@ -1188,6 +1189,7 @@ private sub hReadNumber( byref t as FBTOKEN, byval flags as LEXCHECK )
 			'' 'L' | 'l'
 			case CHAR_LUPP, CHAR_LLOW
 				if( (flags and LEXCHECK_NOLETTERSUFFIX) = 0 ) then
+					t.hassuffix = TRUE
 					lexEatChar( )
 					'' 'LL'?
 					var c = lexCurrentChar( )
@@ -1215,6 +1217,7 @@ private sub hReadNumber( byref t as FBTOKEN, byval flags as LEXCHECK )
 				if( (flags and LEXCHECK_NOLETTERSUFFIX) = 0 ) then
 					if( have_u_suffix = FALSE ) then
 						t.dtype = FB_DATATYPE_SINGLE
+						t.hassuffix = TRUE
 						lexEatChar( )
 					end if
 				end if
@@ -1225,6 +1228,7 @@ private sub hReadNumber( byref t as FBTOKEN, byval flags as LEXCHECK )
 				if( (flags and LEXCHECK_NOLETTERSUFFIX) = 0 ) then
 					if( have_u_suffix = FALSE ) then
 						t.dtype = FB_DATATYPE_DOUBLE
+						t.hassuffix = TRUE
 						lexEatChar( )
 					end if
 				end if
@@ -1260,13 +1264,14 @@ private sub hReadNumber( byref t as FBTOKEN, byval flags as LEXCHECK )
 					end if
 				end if
 				t.dtype = FB_DATATYPE_LONG
-
+				t.hassuffix = TRUE
 				lexEatChar( )
 
 			'' '!'
 			case FB_TK_SNGTYPECHAR
 				if( have_u_suffix = FALSE ) then
 					t.dtype = FB_DATATYPE_SINGLE
+					t.hassuffix = TRUE
 					lexEatChar( )
 				end if
 
@@ -1276,6 +1281,7 @@ private sub hReadNumber( byref t as FBTOKEN, byval flags as LEXCHECK )
 					'' isn't it a '##'?
 					if( lexGetLookAheadChar( ) <> FB_TK_DBLTYPECHAR ) then
 						t.dtype = FB_DATATYPE_DOUBLE
+						t.hassuffix = TRUE
 						lexEatChar( )
 					end if
 				end if
@@ -1777,7 +1783,7 @@ re_read:
 	case CHAR_DOT
 		'' only check for fpoint literals if not inside a comment or parsing an $include
 		if( (flags and (LEXCHECK_NOLINECONT or LEXCHECK_NOSUFFIX)) = 0 ) then
-			var lachar = lexGetLookAheadChar( TRUE )
+			var lachar = lexGetLookAheadChar( )
 			'' '0' .. '9'?
 			if( (lachar >= CHAR_0) and (lachar <= CHAR_9) ) then
 				hReadNumber( *t, flags )
@@ -1882,7 +1888,7 @@ read_char:
 
 			select case char
 			case CHAR_LT
-				select case lexCurrentChar( TRUE )
+				select case lexCurrentChar( )
 				'' '<='?
 				case CHAR_EQ
 					t->text[t->len+0] = CHAR_EQ
@@ -1905,7 +1911,7 @@ read_char:
 
 			case CHAR_GT
 				'' '>='?
-				if( (fbGetGtInParensOnly( ) = FALSE) andalso (lexCurrentChar( TRUE ) = CHAR_EQ) ) then
+				if( (fbGetGtInParensOnly( ) = FALSE) andalso (lexCurrentChar( ) = CHAR_EQ) ) then
 					t->text[t->len+0] = CHAR_EQ
 					t->text[t->len+1] = 0
 					t->len += 1
@@ -1917,7 +1923,7 @@ read_char:
 
 			case CHAR_EQ
 				'' '=>'?
-				if( lexCurrentChar( TRUE ) = CHAR_GT ) then
+				if( lexCurrentChar( ) = CHAR_GT ) then
 					t->text[t->len+0] = CHAR_GT
 					t->text[t->len+1] = 0
 					t->len += 1
@@ -1937,7 +1943,7 @@ read_char:
 			t->class = FB_TKCLASS_OPERATOR
 
 			'' check for type-field dereference
-			if( lexCurrentChar( TRUE ) = CHAR_GT ) then
+			if( lexCurrentChar( ) = CHAR_GT ) then
 				t->text[t->len+0] = CHAR_GT
 				t->text[t->len+1] = 0
 				t->len += 1
@@ -2013,7 +2019,7 @@ private sub hMultiLineComment( ) static
 
 	cnt = 0
 	do
-		select case as const lexCurrentChar( TRUE )
+		select case as const lexCurrentChar( )
 		'' EOF?
 		case 0
 			errReportEx( FB_ERRMSG_EXPECTEDENDCOMMENT, NULL )

@@ -167,13 +167,17 @@ private function hFieldAccess _
 			return astNewNIDXARRAY( hBuildField( varexpr, offsetexpr, fld, dtype, subtype ) )
 		end if
 
-		'' '()'?
-		if( lexGetLookAhead( 1 ) = CHAR_RPRNT ) then
-			return hBuildField( varexpr, offsetexpr, fld, dtype, subtype )
-		end if
-
 		'' '('
 		lexSkipToken( )
+
+		'' ')'?
+		if( lexGetToken() = CHAR_RPRNT ) then
+
+			'' ')'
+			lexSkipToken( )
+
+			return astNewNIDXARRAY( hBuildField( varexpr, offsetexpr, fld, dtype, subtype ) )
+		end if
 
 		if( symbIsDynamic( fld ) ) then
 			'' Dynamic array field; access the descriptor field (same offset)
@@ -685,6 +689,9 @@ function cMemberDeref _
 				var proc = symbFindSelfBopOvlProc( AST_OP_PTRINDEX, varexpr, idxexpr, @err_num )
 				if( proc ) then
 					varexpr = astBuildCall( proc, varexpr, idxexpr )
+					if( varexpr = NULL ) then
+						exit function
+					end if
 				else
 					if( err_num = FB_ERRMSG_OK ) then
 						errReport( FB_ERRMSG_EXPECTEDPOINTER, TRUE )
@@ -694,6 +701,12 @@ function cMemberDeref _
 				'' '.'?
 				if( lexGetToken( ) = CHAR_DOT ) then
 					lexSkipToken( LEXCHECK_NOPERIOD )
+
+					'' member access on overloaded []'s return type must be UDT
+					if( astGetDataType( varexpr ) <> FB_DATATYPE_STRUCT ) then
+						errReport( FB_ERRMSG_EXPECTEDUDT, TRUE )
+						exit function
+					end if
 
 					'' MemberAccess
 					varexpr = cMemberAccess( astGetFullType( varexpr ), _
@@ -1040,7 +1053,7 @@ function cVariableEx overload _
 	varexpr = NULL
 	idxexpr = NULL
 
-	dim as integer check_fields = TRUE, is_nidxarray = FALSE
+	dim as integer check_fields = TRUE, is_nidxarray = TRUE
 
 	'' check for '()', it's not an array, just passing bydesc
 	if( (lexGetToken( ) = CHAR_LPRNT) and (not fbGetIdxInParensOnly( )) ) then
@@ -1071,6 +1084,10 @@ function cVariableEx overload _
 					                     astBuildDerefAddrOf( descexpr, symb.fbarray_data, FB_DATATYPE_INTEGER, NULL ) )
 				else
 					idxexpr = cFixedSizeArrayIndex( sym )
+				end if
+
+				if( idxexpr ) then
+					is_nidxarray = FALSE
 				end if
 
 				'' ')'
@@ -1106,7 +1123,6 @@ function cVariableEx overload _
 				idxexpr = hMakeArrayIdx( sym )
 			else
 				check_fields = FALSE
-				is_nidxarray = TRUE
 			end if
 		end if
 	end if
@@ -1393,18 +1409,18 @@ function cVarOrDeref _
 		byval options as FB_VAREXPROPT _
 	) as ASTNODE ptr
 
-	dim as integer last_isexpr = any, check_array = any
+	dim as integer last_isexpr = any, previous_check_array = any
 
 	if( options and FB_VAREXPROPT_ISEXPR ) then
 		last_isexpr = fbGetIsExpression( )
 		fbSetIsExpression( TRUE )
 	end if
-	check_array = fbGetCheckArray( )
+	previous_check_array = fbGetCheckArray( )
 	fbSetCheckArray( ((options and FB_VAREXPROPT_NOARRAYCHECK) = 0) )
 
 	dim as ASTNODE ptr expr = cHighestPrecExpr( NULL, NULL )
 
-	fbSetCheckArray( check_array )
+	fbSetCheckArray( previous_check_array )
 	if( options and FB_VAREXPROPT_ISEXPR ) then
 		fbSetIsExpression( last_isexpr )
 	end if

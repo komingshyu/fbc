@@ -623,7 +623,7 @@ private function hCallProfiler _
 	) as ASTNODE ptr
 
 	'' on all ports except dos _mcount() is just a normal call
-	if( env.clopt.profile ) then
+	if( env.clopt.profile andalso ( fbGetOption( FB_COMPOPT_BACKEND ) <> FB_BACKEND_GCC ) ) then
 		if( env.clopt.target <> FB_COMPTARGET_DOS ) then
 			head_node = astAddAfter( rtlProfileCall_mcount(), head_node )
 		end if
@@ -1068,7 +1068,7 @@ private function hInitDynamicArrayField _
 	astDelTree( boundstypeini )
 
 	'' Build the REDIM CALL with the bounds expressions
-	function = rtlArrayRedim( astBuildVarField( this_, fld ), dimensions, exprTB(), FALSE, (not symbGetDontInit( fld )) )
+	function = rtlArrayRedim( astNewNIDXARRAY( astBuildVarField( this_, fld ) ), dimensions, exprTB(), FALSE, (not symbGetDontInit( fld )) )
 end function
 
 private function hCallFieldCtors _
@@ -1228,7 +1228,7 @@ private sub hCallFieldDtor _
 	'' Dynamic array field?
 	if( symbIsDynamic( fld ) ) then
 		'' Always needs clean up, regardless of dtype
-		astAdd( rtlArrayErase( astBuildVarField( this_, fld ), TRUE, FALSE ) )
+		astAdd( rtlArrayErase( astNewNIDXARRAY( astBuildVarField( this_, fld ) ), TRUE, FALSE ) )
 	elseif( symbGetArrayDimensions( fld ) = 0 ) then
 		'' Normal field
 		if( symbGetType( fld ) = FB_DATATYPE_STRING ) then
@@ -1240,7 +1240,7 @@ private sub hCallFieldDtor _
 	else
 		'' Fixed-size array field
 		if( symbGetType( fld ) = FB_DATATYPE_STRING ) then
-			astAdd( rtlArrayErase( astBuildVarField( this_, fld ), FALSE, FALSE ) )
+			astAdd( rtlArrayErase( astNewNIDXARRAY( astBuildVarField( this_, fld ) ), FALSE, FALSE ) )
 		elseif( symbHasDtor( fld ) ) then
 			astAdd( hCallCtorList( FALSE, this_, fld ) )
 		end if
@@ -1375,7 +1375,7 @@ private sub hCallStaticDtor( byval sym as FBSYMBOL ptr )
 
 	'' dynamic?
 	if( symbIsDynamic( sym ) ) then
-		astAdd( rtlArrayErase( astBuildVarField( sym, NULL, 0 ), TRUE, FALSE ) )
+		astAdd( rtlArrayErase( astNewNIDXARRAY( astBuildVarField( sym, NULL, 0 ) ), TRUE, FALSE ) )
 	else
 		'' not an array?
 		if( symbGetArrayDimensions( sym ) = 0 ) then

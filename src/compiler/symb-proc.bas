@@ -695,7 +695,7 @@ private sub hSetupProcRegisterParameters _
 		assert( env.clopt.nothiscall = FALSE )
 		maxregnum = 1
 	case FB_FUNCMODE_FASTCALL
-		'' should never get here if "-z no-thiscall" is active
+		'' should never get here if "-z no-fastcall" is active
 		assert( env.clopt.nofastcall = FALSE )
 		maxregnum = 2
 	end select
@@ -1758,7 +1758,7 @@ end function
 		                            arg_expr, _
 		                            arg_mode, _
 		                            @err_num, _
-		                            options or FB_SYMBFINDOPT_NO_CTOR )
+		                            FB_SYMBFINDOPT_NO_CTOR )
 
 		if( proc <> NULL ) then
 			return FB_OVLPROC_HALFMATCH - OvlMatchScore( FB_DATATYPE_STRUCT, 0 )
@@ -2099,7 +2099,7 @@ private function hCheckOvlParam _
 			return FB_OVLPROC_NO_MATCH
 		end if
 
-		assert( astIsVAR( arg_expr ) or astIsFIELD( arg_expr ) )
+		assert( astIsVAR( arg_expr ) or astIsFIELD( arg_expr ) or astIsNIDXARRAY( arg_expr ) )
 		array = arg_expr->sym
 		assert( symbIsArray( array ) )
 

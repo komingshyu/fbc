@@ -243,7 +243,7 @@ dim shared as const zstring ptr dtypeName(0 to FB_DATATYPES-1) = _
 	@"boolean"  , _ '' boolean
 	@"int8"     , _ '' byte
 	@"uint8"    , _ '' ubyte
-	NULL        , _ '' char
+	@"char"     , _ '' char
 	@"int16"    , _ '' short
 	@"uint16"   , _ '' ushort
 	NULL        , _ '' wchar
@@ -1591,9 +1591,8 @@ private function hEmitType _
 		hEmitUDT( subtype, (ptrcount > 0) )
 		s = *symbGetMangledName( subtype )
 
-	case FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
-		'' Emit ubyte instead of char,
-		'' and ubyte/ushort/uinteger instead of wchar_t
+	case FB_DATATYPE_WCHAR
+		'' Emit ubyte/ushort/uinteger instead of wchar_t
 		s = *dtypeName(typeGetRemapType( dtype ))
 
 	case FB_DATATYPE_FIXSTR
@@ -1754,6 +1753,16 @@ private function exprNewCAST _
 			l->subtype = subtype
 			return l
 		end if
+	end if
+
+	'' casting zstring to some other type? Try to force unsigned char by
+	'' casting to unsigned char first.  If char is signed (in gcc) then
+	'' the sign is extended and will give negative numbers when promoted
+	'' which we probably don't want when converting ascii to integer.
+	if( typeGetDtAndPtrOnly( l->dtype ) = FB_DATATYPE_CHAR ) then
+		var n = exprNew( EXPRCLASS_CAST, FB_DATATYPE_UBYTE, NULL )
+		n->l = l
+		l = n
 	end if
 
 	var n = exprNew( EXPRCLASS_CAST, dtype, subtype )
@@ -1932,7 +1941,7 @@ private function exprNewUOP _
 		assert( typeGetPtrCnt( dtype ) > 0 )
 		dtype = typeDeref( dtype )
 
-	case AST_OP_NEG, AST_OP_NOT
+	case AST_OP_NEG, AST_OP_NOT, AST_OP_BOOLNOT
 		'' peep-hole optimization:
 		''    -(-(foo)) -> foo
 		''    ~(~(foo)) -> foo
@@ -2202,11 +2211,19 @@ private sub hBuildWstrLit _
 
 	dim as integer ch = any
 	dim as integer wcharsize = any
+	dim as zstring ptr strstart = any
 
 	'' (ditto)
 
-	ln += "L"""
 	wcharsize = typeGetSize( FB_DATATYPE_WCHAR )
+	'' On android wstring is 1 byte but C wide strings/chars are 4 bytes, so don't use them
+	if( wcharsize = 1 ) then
+		strstart = @""""
+	else
+		strstart = @"L"""
+	end if
+
+	ln += *strstart
 
 	'' Don't bother emitting the null terminator explicitly - gcc will add
 	'' it automatically already
@@ -2216,7 +2233,7 @@ private sub hBuildWstrLit _
 		if( hCharNeedsEscaping( ch, asc( """" ) ) ) then
 			ln += $"\x" + hex( ch, wcharsize * 2 )
 			if( hIsValidHexDigit( (*w)[i+1] ) ) then
-				ln += """ L"""
+				ln += """ " + *strstart
 			end if
 		elseif( ch = asc( "?" ) ) then
 			ln += "?"
@@ -2226,7 +2243,7 @@ private sub hBuildWstrLit _
 				case asc( "=" ), asc( "/" ), asc( "'" ), _
 				     asc( "(" ), asc( ")" ), asc( "!" ), _
 				     asc( "<" ), asc( ">" ), asc( "-" )
-					ln += """ L"""
+					ln += """ " + *strstart
 				end select
 			end if
 		else
@@ -2273,6 +2290,7 @@ private function hUopToStr _
 	case AST_OP_DEREF  : function = @"*"
 	case AST_OP_NEG    : function = @"-"
 	case AST_OP_NOT    : function = @"~"
+	case AST_OP_BOOLNOT: function = @"!"
 
 	case AST_OP_ABS
 		is_builtin = TRUE
@@ -2860,7 +2878,8 @@ private sub _emitBop _
 		byval v1 as IRVREG ptr, _
 		byval v2 as IRVREG ptr, _
 		byval vr as IRVREG ptr, _
-		byval label as FBSYMBOL ptr _
+		byval label as FBSYMBOL ptr, _
+		byval options as IR_EMITOPT _
 	)
 
 	dim as EXPRNODE ptr l = any, r = any
@@ -2873,8 +2892,12 @@ private sub _emitBop _
 		assert( vr = NULL )
 		static as string s
 		s = "if( "
+		if( (options and IR_EMITOPT_REL_DOINVERSE) <> 0 ) then
+			s += "!"
+		end if
+		s += "("
 		s += exprFlush( exprNewBOP( op, l, r ) )
-		s += " ) goto "
+		s += ") ) goto "
 		s += *symbGetMangledName( label )
 		s += ";"
 		hWriteLine( s )
@@ -2888,6 +2911,10 @@ private sub _emitBop _
 	select case as const( op )
 	case AST_OP_EQ, AST_OP_NE, AST_OP_GT, AST_OP_LT, AST_OP_GE, AST_OP_LE
 		l = exprNewBOP( op, l, r )
+
+		if( (options and IR_EMITOPT_REL_DOINVERSE) <> 0 ) then
+			l = exprNewUOP( AST_OP_BOOLNOT, l )
+		end if
 
 		'' comparisons returning a boolean produce 0/1,
 		'' comparisons returning an integer produce 0/-1.
@@ -2967,8 +2994,7 @@ private sub _emitUop _
 		'' the inverse 1/0 boolean. Thus it can't be implemented as
 		'' bitwise NOT.
 		'' Do: <expr == 0>
-		'' We could also do <!expr>, but we don't support emitting the
-		'' ! operator at the moment.
+		'' !!!TODO!!! We could also do <!expr>, see AST_OP_BOOLNOT
 		expr = exprNewBOP( AST_OP_EQ, expr, exprNewIMMi( 0 ) )
 	else
 		expr = exprNewUOP( op, expr )
@@ -3639,7 +3665,15 @@ private sub _emitAsmLine( byval asmtokenhead as ASTASMTOK ptr )
 			select case( fbGetCpuFamily( ) )
 			case FB_CPUFAMILY_X86, FB_CPUFAMILY_X86_64
 				if( fbGetCpuFamily( ) = FB_CPUFAMILY_X86 ) then
-					ln += ", ""eax"", ""ebx"", ""ecx"", ""edx"", ""edi"", ""esi"""
+					if( env.clopt.pic ) then
+						'' ebx is the fixed-purpose PIC register. GCC versions before 5.0
+						'' throw an error if you declare that it is clobbered, so we don't do
+						'' that. GCC 5 has rewritten PIC register handling and can now save and
+						'' restore ebx.
+						ln += ", ""eax"", ""ecx"", ""edx"", ""edi"", ""esi"""
+					else
+						ln += ", ""eax"", ""ebx"", ""ecx"", ""edx"", ""edi"", ""esi"""
+					end if
 				else
 					ln += ", ""rax"", ""rbx"", ""rcx"", ""rdx"", ""rdi"", ""rsi"""
 					ln += ", ""r8"", ""r9"", ""r10"", ""r11"", ""r12"", ""r13"", ""r14"", ""r15"""
@@ -3814,7 +3848,12 @@ private sub _emitVarIniWstr _
 			ctx.varini += ", "
 		end if
 
-		ctx.varini += "L'"
+		'' On android wstring is 1 byte but C wide strings/chars are 4 bytes, so don't use them
+		if( wcharsize = 1 ) then
+			ctx.varini += "'"
+		else
+			ctx.varini += "L'"
+		end if
 
 		ch = (*literal)[i]
 

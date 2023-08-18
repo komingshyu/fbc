@@ -91,7 +91,8 @@ declare function hMakeParamDesc _
 		( /'FB_WARNINGMSG_CMDLINEIGNORED            '/ 1, @"#cmdline ignored" ), _
 		( /'FB_WARNINGMSG_RESERVEDGLOBALSYMBOL      '/ 1, @"Use of reserved global or backend symbol" ), _
 		( /'FB_WARNINGMSG_EXPECTEDDIGIT             '/ 1, @"Expected digit" ), _
-		( /'FB_WARNINGMSG_UPCASTDISCARDSINITIALIZER '/ 1, @"Up-casting discards initializer(s)" ) _
+		( /'FB_WARNINGMSG_UPCASTDISCARDSINITIALIZER '/ 1, @"Up-casting discards initializer(s)" ), _
+		( /'FB_WARNINGMSG_MISSINGANDROIDSYSROOT     '/ 1, @"GCC didn't provide a proper sysroot. You probably have to pass fbc an argument of the form '-sysroot $NDK/platforms/android-$API/arch-$ARCH'" ) _
 	}
 
 	dim shared errorMsgs( 1 to FB_ERRMSGS-1 ) as const zstring ptr => _
@@ -310,7 +311,7 @@ declare function hMakeParamDesc _
 		/'FB_ERRMSG_ABSTRACTDTOR                       '/ @"Destructor declared ABSTRACT", _
 		/'FB_ERRMSG_MEMBERCANTBESTATIC                 '/ @"Member cannot be static", _
 		/'FB_ERRMSG_MEMBERISNTSTATIC                   '/ @"Member isn't static", _
-		/'FB_ERRMSG_STATICMEMBERHASNOINSTANCEPTR       '/ @"Only static members can be accessed from static functions", _
+		/'FB_ERRMSG_STATICMEMBERHASNOINSTANCEPTR       '/ @"Only static members can be accessed from static functions and parameter initializers", _
 		/'FB_ERRMSG_PRIVORPUBTTRIBNOTALLOWED           '/ @"The PRIVATE and PUBLIC attributes are not allowed with REDIM, COMMON or EXTERN", _
 		/'FB_ERRMSG_PROCPROTOTYPENOTSTATIC             '/ @"STATIC used here, but not the in the DECLARE statement", _
 		/'FB_ERRMSG_PROCPROTOTYPENOTCONST              '/ @"CONST used here, but not the in the DECLARE statement", _
